@@ -1,0 +1,19 @@
+<h2>{{ title }}</h2>
+
+
+<div>
+  <input
+    type="file"
+    (change)="onFileSelected($event)"
+  />
+
+  <button
+    type="button"
+    [disabled]="!selectedFile || uploading"
+    (click)="upload()"
+  >
+    {{ uploading ? 'Uploading...' : 'Upload' }}
+  </button>
+
+  <p *ngIf="message">{{ message }}</p>
+</div>
