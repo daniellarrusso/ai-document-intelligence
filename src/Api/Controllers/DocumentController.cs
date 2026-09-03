@@ -34,6 +34,11 @@ public class DocumentController : ControllerBase
         }
 
         var uploadResult = _documentStorage.UploadAsync(file.OpenReadStream(), file.FileName, file.ContentType).Result;
-        return Ok(uploadResult);
+        if (uploadResult == null)
+        {
+            return BadRequest("File upload failed.");
+        }
+
+        return new JsonResult(uploadResult);
     }
 }
