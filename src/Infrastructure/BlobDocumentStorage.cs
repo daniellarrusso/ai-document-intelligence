@@ -6,13 +6,11 @@ using Microsoft.Extensions.Options;
 public class BlobDocumentStorage : IDocumentStorage
 {
     private readonly BlobContainerClient _container;
-    private readonly AppDbContext _context;
 
     public BlobDocumentStorage(BlobServiceClient blobServiceClient, IOptions<AzureStorageOptions> options, AppDbContext context)
     {
         _container = blobServiceClient.GetBlobContainerClient(options.Value.ContainerName);
         _container.CreateIfNotExists();
-        _context = context;
     }
 
 
@@ -36,22 +34,6 @@ public class BlobDocumentStorage : IDocumentStorage
             throw new ArgumentException("Content type cannot be null or empty.", nameof(contentType));
         }
 
-        var fileName = blobName;
-
-        // blobname convention documents/{guid}/original/{originalfilename}
-        if (!blobName.StartsWith("documents/"))
-        {
-            blobName = $"documents/{Guid.NewGuid()}/original/{blobName}";
-        }
-
-        var document = new Document
-        {
-            BlobName = blobName,
-            FileName = fileName,
-            ContentType = contentType,
-            UploadedAt = DateTime.UtcNow
-        };
-
         var blob = _container.GetBlobClient(blobName);
 
         try
@@ -65,9 +47,6 @@ public class BlobDocumentStorage : IDocumentStorage
         {
             throw new InvalidOperationException("Failed to upload the document to blob storage.", ex);
         }
-        _context.Documents.Add(document);
-
-        await _context.SaveChangesAsync(cancellationToken);
 
         return blobName;
     }
