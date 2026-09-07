@@ -1,0 +1,86 @@
+using AiDocumentIntelligence.Domain;
+using AiDocumentIntelligence.Infrastructure;
+using Azure.Storage.Blobs;
+using Microsoft.Extensions.Options;
+
+public class BlobDocumentStorage : IDocumentStorage
+{
+    private readonly BlobContainerClient _container;
+    private readonly AppDbContext _context;
+
+    public BlobDocumentStorage(BlobServiceClient blobServiceClient, IOptions<AzureStorageOptions> options, AppDbContext context)
+    {
+        _container = blobServiceClient.GetBlobContainerClient(options.Value.ContainerName);
+        _container.CreateIfNotExists();
+        _context = context;
+    }
+
+
+    public async Task<string> UploadAsync(Stream content, string blobName, string contentType, CancellationToken cancellationToken = default)
+    {
+
+        // validate file supplied
+        if (content == null || content.Length == 0)
+        {
+            throw new ArgumentException("File content cannot be null or empty.", nameof(content));
+        }
+        // max size less than 50 MB
+        if (content.Length > 50 * 1024 * 1024)
+        {
+            throw new ArgumentException("File size cannot exceed 50 MB.", nameof(content));
+        }
+
+        // validate content type
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            throw new ArgumentException("Content type cannot be null or empty.", nameof(contentType));
+        }
+
+        var fileName = blobName;
+
+        // blobname convention documents/{guid}/original/{originalfilename}
+        if (!blobName.StartsWith("documents/"))
+        {
+            blobName = $"documents/{Guid.NewGuid()}/original/{blobName}";
+        }
+
+        var document = new Document
+        {
+            BlobName = blobName,
+            FileName = fileName,
+            ContentType = contentType,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        var blob = _container.GetBlobClient(blobName);
+
+        try
+        {
+            await blob.UploadAsync(
+                content,
+                new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType },
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to upload the document to blob storage.", ex);
+        }
+        _context.Documents.Add(document);
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return blobName;
+    }
+
+    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
+    {
+        // Implement download logic here
+        throw new NotImplementedException();
+    }
+
+    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+    {
+        // Implement delete logic here
+        throw new NotImplementedException();
+    }
+}

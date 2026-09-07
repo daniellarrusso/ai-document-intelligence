@@ -6,14 +6,14 @@ using Microsoft.AspNetCore.Mvc;
 public class DocumentController : ControllerBase
 {
     private readonly ILogger<DocumentController> _logger;
-    private readonly IDocumentStorage _documentStorage;
+    private readonly DocumentService _documentService;
     private readonly AppDbContext _context;
 
-    public DocumentController(ILogger<DocumentController> logger, AppDbContext context, IDocumentStorage documentStorage)
+    public DocumentController(ILogger<DocumentController> logger, AppDbContext context, DocumentService documentService)
     {
         _logger = logger;
         _context = context;
-        _documentStorage = documentStorage;
+        _documentService = documentService;
     }
 
     [HttpGet(Name = "GetDocument")]
@@ -33,7 +33,12 @@ public class DocumentController : ControllerBase
             return BadRequest("File cannot be null or empty.");
         }
 
-        var uploadResult = _documentStorage.UploadAsync(file.OpenReadStream(), file.FileName, file.ContentType).Result;
+        var uploadResult = _documentService.SaveDocumentAsync(new UploadDocumentRequest(
+            file.OpenReadStream(),
+            file.FileName,
+            file.ContentType,
+            file.Length)).Result;
+
         if (uploadResult == null)
         {
             return BadRequest("File upload failed.");
