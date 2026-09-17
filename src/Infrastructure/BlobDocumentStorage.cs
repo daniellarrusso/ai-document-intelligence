@@ -7,7 +7,7 @@ public class BlobDocumentStorage : IDocumentStorage
 {
     private readonly BlobContainerClient _container;
 
-    public BlobDocumentStorage(BlobServiceClient blobServiceClient, IOptions<AzureStorageOptions> options, AppDbContext context)
+    public BlobDocumentStorage(BlobServiceClient blobServiceClient, IOptions<AzureStorageOptions> options)
     {
         _container = blobServiceClient.GetBlobContainerClient(options.Value.ContainerName);
         _container.CreateIfNotExists();

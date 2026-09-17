@@ -12,6 +12,16 @@ public class DocumentService
         _documentStorage = documentStorage;
     }
 
+    public async Task<List<Document>> GetDocumentsAsync(int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    {
+        return await _documentRepository.GetDocumentsAsync(pageNumber, pageSize, cancellationToken);
+    }
+
+    public async Task<Document?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
+    }
+
     public async Task<string> SaveDocumentAsync(UploadDocumentRequest file, CancellationToken cancellationToken = default)
     {
         var documentId = Guid.NewGuid();
