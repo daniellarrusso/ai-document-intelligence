@@ -17,6 +17,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Infrastructure", "Infrastru
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiDocumentIntelligence.Infrastructure", "src\Infrastructure\AiDocumentIntelligence.Infrastructure.csproj", "{CFDEEDE4-ABFA-4B50-94FA-187F5D8DC12D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiDocumentIntelligence.Infrastructure.Tests", "tests\AiDocumentIntelligence.Infrastructure.Tests\AiDocumentIntelligence.Infrastructure.Tests.csproj", "{89CE51F8-9EEF-464D-95D4-AFCBB5909875}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,6 +67,18 @@ Global
 		{CFDEEDE4-ABFA-4B50-94FA-187F5D8DC12D}.Release|x64.Build.0 = Release|Any CPU
 		{CFDEEDE4-ABFA-4B50-94FA-187F5D8DC12D}.Release|x86.ActiveCfg = Release|Any CPU
 		{CFDEEDE4-ABFA-4B50-94FA-187F5D8DC12D}.Release|x86.Build.0 = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|x64.Build.0 = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Debug|x86.Build.0 = Debug|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|Any CPU.Build.0 = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|x64.ActiveCfg = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|x64.Build.0 = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|x86.ActiveCfg = Release|Any CPU
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -74,5 +90,6 @@ Global
 		{0ED7B6FE-83AA-48C3-8475-F0905217BF77} = {81034408-37C8-1011-444E-4C15C2FADA8E}
 		{9048EB7F-3875-A59E-E36B-5BD4C6F2A282} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{CFDEEDE4-ABFA-4B50-94FA-187F5D8DC12D} = {9048EB7F-3875-A59E-E36B-5BD4C6F2A282}
+		{89CE51F8-9EEF-464D-95D4-AFCBB5909875} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
