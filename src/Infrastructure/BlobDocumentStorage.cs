@@ -51,10 +51,28 @@ public class BlobDocumentStorage : IDocumentStorage
         return blobName;
     }
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
+    public async Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
     {
-        // Implement download logic here
-        throw new NotImplementedException();
+        if (string.IsNullOrWhiteSpace(blobName))
+        {
+            throw new ArgumentException("Blob name cannot be null or empty.", nameof(blobName));
+        }
+
+        var blob = _container.GetBlobClient(blobName);
+
+        if (!await blob.ExistsAsync(cancellationToken))
+        {
+            throw new FileNotFoundException($"The document '{blobName}' was not found in blob storage.");
+        }
+
+        try
+        {
+            return await blob.OpenReadAsync(cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to download the document from blob storage.", ex);
+        }
     }
 
     public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)

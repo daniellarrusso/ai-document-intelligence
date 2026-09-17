@@ -141,6 +141,90 @@ public class BlobDocumentStorageTests
         Assert.IsType<RequestFailedException>(ex.InnerException);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task DownloadAsync_InvalidBlobName_ThrowsArgumentException(string? blobName)
+    {
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.DownloadAsync(blobName!));
+
+        Assert.Equal("blobName", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_BlobDoesNotExist_ThrowsFileNotFoundException()
+    {
+        var blobClientMock = new Mock<BlobClient>();
+        blobClientMock
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue(false, Mock.Of<Response>()));
+        _containerClientMock
+            .Setup(c => c.GetBlobClient("missing.txt"))
+            .Returns(blobClientMock.Object);
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<FileNotFoundException>(
+            () => sut.DownloadAsync("missing.txt"));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_BlobExists_ReturnsContentStream()
+    {
+        using var expectedContent = new MemoryStream([1, 2, 3]);
+
+        var blobClientMock = new Mock<BlobClient>();
+        blobClientMock
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue(true, Mock.Of<Response>()));
+        blobClientMock
+            .Setup(b => b.OpenReadAsync(
+                It.IsAny<long>(),
+                It.IsAny<int?>(),
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedContent);
+        _containerClientMock
+            .Setup(c => c.GetBlobClient("file.txt"))
+            .Returns(blobClientMock.Object);
+
+        var sut = CreateSut();
+
+        var result = await sut.DownloadAsync("file.txt");
+
+        Assert.Same(expectedContent, result);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_BlobClientThrows_WrapsInInvalidOperationException()
+    {
+        var blobClientMock = new Mock<BlobClient>();
+        blobClientMock
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue(true, Mock.Of<Response>()));
+        blobClientMock
+            .Setup(b => b.OpenReadAsync(
+                It.IsAny<long>(),
+                It.IsAny<int?>(),
+                null,
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new RequestFailedException("boom"));
+        _containerClientMock
+            .Setup(c => c.GetBlobClient("file.txt"))
+            .Returns(blobClientMock.Object);
+
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.DownloadAsync("file.txt"));
+
+        Assert.IsType<RequestFailedException>(ex.InnerException);
+    }
+
     // Reports an oversized length without allocating the underlying bytes.
     private sealed class OversizedStream(long length) : Stream
     {
