@@ -199,6 +199,66 @@ public class BlobDocumentStorageTests
         Assert.Same(expectedContent, result);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task DeleteAsync_InvalidBlobName_ThrowsArgumentException(string? blobName)
+    {
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.DeleteAsync(blobName!));
+
+        Assert.Equal("blobName", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ValidBlobName_DeletesBlob()
+    {
+        var blobClientMock = new Mock<BlobClient>();
+        blobClientMock
+            .Setup(b => b.DeleteIfExistsAsync(
+                It.IsAny<DeleteSnapshotsOption>(),
+                It.IsAny<BlobRequestConditions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue(true, Mock.Of<Response>()));
+        _containerClientMock
+            .Setup(c => c.GetBlobClient("file.txt"))
+            .Returns(blobClientMock.Object);
+
+        var sut = CreateSut();
+
+        await sut.DeleteAsync("file.txt");
+
+        blobClientMock.Verify(b => b.DeleteIfExistsAsync(
+            It.IsAny<DeleteSnapshotsOption>(),
+            It.IsAny<BlobRequestConditions>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_BlobClientThrows_WrapsInInvalidOperationException()
+    {
+        var blobClientMock = new Mock<BlobClient>();
+        blobClientMock
+            .Setup(b => b.DeleteIfExistsAsync(
+                It.IsAny<DeleteSnapshotsOption>(),
+                It.IsAny<BlobRequestConditions>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new RequestFailedException("boom"));
+        _containerClientMock
+            .Setup(c => c.GetBlobClient("file.txt"))
+            .Returns(blobClientMock.Object);
+
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.DeleteAsync("file.txt"));
+
+        Assert.IsType<RequestFailedException>(ex.InnerException);
+    }
+
     [Fact]
     public async Task DownloadAsync_BlobClientThrows_WrapsInInvalidOperationException()
     {

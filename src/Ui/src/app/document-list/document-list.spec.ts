@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentList } from './document-list';
@@ -19,7 +20,7 @@ const sample: DocumentSummary = {
 async function render(getDocuments: () => unknown, uploads = signal(0), settle = true) {
   await TestBed.configureTestingModule({
     imports: [DocumentList],
-    providers: [{ provide: DocumentService, useValue: { getDocuments, uploads } }],
+    providers: [provideRouter([]), { provide: DocumentService, useValue: { getDocuments, uploads } }],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DocumentList);

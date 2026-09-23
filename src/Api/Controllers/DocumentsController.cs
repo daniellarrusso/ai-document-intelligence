@@ -52,4 +52,12 @@ public class DocumentsController : ControllerBase
 
         return Ok(document);
     }
+
+    [HttpDelete("{id}", Name = "DeleteDocument")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await _documentService.DeleteDocumentAsync(id, cancellationToken);
+
+        return deleted ? NoContent() : NotFound();
+    }
 }

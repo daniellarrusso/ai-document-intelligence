@@ -40,4 +40,43 @@ public class DocumentServiceTests
 
         _queueMock.Verify(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task DeleteDocumentAsync_DocumentExists_DeletesBlobThenRecordAndReturnsTrue()
+    {
+        var document = new Document { Id = Guid.NewGuid(), BlobName = "documents/x/original/file.txt" };
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(document.Id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        var sut = CreateSut();
+
+        var result = await sut.DeleteDocumentAsync(document.Id);
+
+        Assert.True(result);
+        _storageMock.Verify(s => s.DeleteAsync(document.BlobName, It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.DeleteDocumentAsync(document.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteDocumentAsync_DocumentMissing_ReturnsFalseAndDeletesNothing()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.DeleteDocumentAsync(Guid.NewGuid());
+
+        Assert.False(result);
+        _storageMock.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.DeleteDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteDocumentAsync_BlobDeleteFails_KeepsRecord()
+    {
+        var document = new Document { Id = Guid.NewGuid(), BlobName = "b" };
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(document.Id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DeleteAsync("b", It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException());
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.DeleteDocumentAsync(document.Id));
+
+        _repositoryMock.Verify(r => r.DeleteDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
