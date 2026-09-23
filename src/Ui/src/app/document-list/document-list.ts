@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { DocumentStatus, DocumentSummary } from './document.model';
 import { DocumentService } from './document.service';
 
@@ -7,7 +8,7 @@ const POLL_INTERVAL_MS = 2000;
 
 @Component({
   selector: 'app-document-list',
-  imports: [DatePipe],
+  imports: [DatePipe, RouterLink],
   templateUrl: './document-list.html',
   styleUrl: './document-list.css',
 })

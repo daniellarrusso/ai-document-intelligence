@@ -75,9 +75,23 @@ public class BlobDocumentStorage : IDocumentStorage
         }
     }
 
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
     {
-        // Implement delete logic here
-        throw new NotImplementedException();
+        if (string.IsNullOrWhiteSpace(blobName))
+        {
+            throw new ArgumentException("Blob name cannot be null or empty.", nameof(blobName));
+        }
+
+        var blob = _container.GetBlobClient(blobName);
+
+        try
+        {
+            // Idempotent: a blob that is already gone is not an error.
+            await blob.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to delete the document from blob storage.", ex);
+        }
     }
 }

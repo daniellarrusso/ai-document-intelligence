@@ -30,7 +30,11 @@
       <tbody class="divide-y divide-slate-100">
         @for (document of documents(); track document.id) {
           <tr>
-            <td class="py-3 pr-4 font-medium text-slate-900">{{ document.fileName }}</td>
+            <td class="py-3 pr-4 font-medium">
+              <a [routerLink]="['/documents', document.id]" class="text-sky-700 hover:underline">{{
+                document.fileName
+              }}</a>
+            </td>
             <td class="py-3 pr-4">{{ formatSize(document.fileSize) }}</td>
             <td class="py-3 pr-4">{{ statusLabel(document.status) }}</td>
             <td class="py-3">{{ document.uploadedAt | date: 'medium' }}</td>

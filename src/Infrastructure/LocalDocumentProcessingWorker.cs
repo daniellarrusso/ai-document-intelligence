@@ -25,9 +25,24 @@ public class LocalDocumentProcessingWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var documentId in _queue.DequeueAllAsync(stoppingToken))
+        try
         {
-            await ProcessAsync(documentId, stoppingToken);
+            await foreach (var documentId in _queue.DequeueAllAsync(stoppingToken))
+            {
+                try
+                {
+                    await ProcessAsync(documentId, stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // One bad document must not stop the worker (and, by default, the whole host).
+                    _logger.LogError(ex, "Unhandled error processing document {DocumentId}", documentId);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown: the channel read (or an in-flight document) was cancelled.
         }
     }
 

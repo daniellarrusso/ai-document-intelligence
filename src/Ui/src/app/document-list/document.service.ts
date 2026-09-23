@@ -17,6 +17,14 @@ export class DocumentService {
     return this.http.get<DocumentSummary[]>(this.baseUrl);
   }
 
+  getDocument(id: string): Observable<DocumentSummary> {
+    return this.http.get<DocumentSummary>(`${this.baseUrl}/${id}`);
+  }
+
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+
   upload(file: File): Observable<DocumentSummary> {
     const formData = new FormData();
     formData.append('file', file);

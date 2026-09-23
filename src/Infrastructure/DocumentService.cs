@@ -56,4 +56,20 @@ public class DocumentService
 
         return document;
     }
+
+    // Returns false if the document does not exist. The blob is removed first so a storage failure
+    // leaves the record in place and the delete can be retried.
+    public async Task<bool> DeleteDocumentAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var document = await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
+        if (document == null)
+        {
+            return false;
+        }
+
+        await _documentStorage.DeleteAsync(document.BlobName, cancellationToken);
+        await _documentRepository.DeleteDocumentAsync(id, cancellationToken);
+
+        return true;
+    }
 }
