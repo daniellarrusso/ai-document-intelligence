@@ -28,6 +28,19 @@ public class DocumentRepository : IDocumentRepository
         }
     }
 
+    public async Task UpdateStatusAsync(Guid id, DocumentStatus status, DateTime? processedAt = null, CancellationToken cancellationToken = default)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (document == null)
+        {
+            return;
+        }
+
+        document.Status = status;
+        document.ProcessedAt = processedAt;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<Document?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);

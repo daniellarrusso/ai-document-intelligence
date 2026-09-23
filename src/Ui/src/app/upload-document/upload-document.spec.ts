@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentService } from '../document-list/document.service';
+import { DocumentStatus } from '../document-list/document.model';
 import { UploadDocument } from './upload-document';
 
 async function setup(upload: (file: File) => unknown) {
@@ -28,7 +29,7 @@ describe('UploadDocument', () => {
   });
 
   it('uploads the selected file and reports success', async () => {
-    const upload = vi.fn(() => of({}));
+    const upload = vi.fn(() => of({ status: DocumentStatus.Processing }));
     const fixture = await setup(upload);
     const file = new File(['x'], 'a.txt');
     fixture.componentInstance.selectedFile.set(file);
@@ -37,7 +38,7 @@ describe('UploadDocument', () => {
     await fixture.whenStable();
 
     expect(upload).toHaveBeenCalledWith(file);
-    expect(fixture.componentInstance.message()).toBe('File uploaded successfully!');
+    expect(fixture.componentInstance.message()).toBe('File uploaded successfully! Status: Processing');
     expect(fixture.componentInstance.selectedFile()).toBeNull();
   });
 

@@ -1,7 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, afterRenderEffect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } from '@angular/core';
 import { DocumentStatus, DocumentSummary } from './document.model';
 import { DocumentService } from './document.service';
+
+const POLL_INTERVAL_MS = 2000;
 
 @Component({
   selector: 'app-document-list',
@@ -11,12 +13,15 @@ import { DocumentService } from './document.service';
 })
 export class DocumentList {
   private readonly documentService = inject(DocumentService);
+  private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly documents = signal<DocumentSummary[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal('');
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.pollTimer));
+
     // Browser only (avoids calling the API during SSR). Runs once initially,
     // then again whenever a document is uploaded.
     afterRenderEffect(() => {
@@ -33,12 +38,24 @@ export class DocumentList {
       next: (documents) => {
         this.documents.set(documents);
         this.loading.set(false);
+        this.schedulePollIfProcessing(documents);
       },
       error: () => {
         this.error.set('Unable to load documents.');
         this.loading.set(false);
       },
     });
+  }
+
+  // Refresh until in-flight documents reach a terminal status (Completed/Failed).
+  private schedulePollIfProcessing(documents: DocumentSummary[]): void {
+    clearTimeout(this.pollTimer);
+    const inFlight = documents.some(
+      (d) => d.status === DocumentStatus.Uploaded || d.status === DocumentStatus.Processing,
+    );
+    if (inFlight) {
+      this.pollTimer = setTimeout(() => this.load(), POLL_INTERVAL_MS);
+    }
   }
 
   protected statusLabel(status: DocumentStatus): string {

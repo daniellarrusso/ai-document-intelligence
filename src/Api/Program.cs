@@ -9,6 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
+builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
+builder.Services.AddHostedService<LocalDocumentProcessingWorker>();
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
