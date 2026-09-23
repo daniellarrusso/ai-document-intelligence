@@ -17,12 +17,12 @@ export class DocumentService {
     return this.http.get<DocumentSummary[]>(this.baseUrl);
   }
 
-  upload(file: File): Observable<unknown> {
+  upload(file: File): Observable<DocumentSummary> {
     const formData = new FormData();
     formData.append('file', file);
 
     return this.http
-      .post(this.baseUrl, formData)
+      .post<DocumentSummary>(this.baseUrl, formData)
       .pipe(tap(() => this.uploadCount.update((count) => count + 1)));
   }
 }

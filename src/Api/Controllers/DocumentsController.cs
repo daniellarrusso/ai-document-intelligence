@@ -36,25 +36,20 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPost(Name = "UploadDocument")]
-    public IActionResult Upload([FromForm] IFormFile file)
+    public async Task<IActionResult> Upload([FromForm] IFormFile file, CancellationToken cancellationToken)
     {
-        // Implement logic to upload a document to the database
         if (file == null || file.Length == 0)
         {
             return BadRequest("File cannot be null or empty.");
         }
 
-        var uploadResult = _documentService.SaveDocumentAsync(new UploadDocumentRequest(
-            file.OpenReadStream(),
+        await using var stream = file.OpenReadStream();
+        var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
+            stream,
             file.FileName,
             file.ContentType,
-            file.Length)).Result;
+            file.Length), cancellationToken);
 
-        if (uploadResult == null)
-        {
-            return BadRequest("File upload failed.");
-        }
-
-        return new JsonResult(uploadResult);
+        return Ok(document);
     }
 }

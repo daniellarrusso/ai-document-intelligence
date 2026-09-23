@@ -10,4 +10,7 @@ public interface IDocumentRepository
 
     // Delete a document from the database by its ID.
     Task DeleteDocumentAsync(Guid id, CancellationToken cancellationToken = default);
+
+    // Sets a document's status (and processed timestamp). No-op if the document does not exist.
+    Task UpdateStatusAsync(Guid id, DocumentStatus status, DateTime? processedAt = null, CancellationToken cancellationToken = default);
 }
