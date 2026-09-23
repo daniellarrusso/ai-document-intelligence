@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { DocumentStatus } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 
 @Component({
@@ -30,8 +31,8 @@ export class UploadDocument {
     this.message.set('');
 
     this.documentService.upload(file).subscribe({
-      next: () => {
-        this.message.set('File uploaded successfully!');
+      next: (document) => {
+        this.message.set(`File uploaded successfully! Status: ${DocumentStatus[document.status]}`);
         this.selectedFile.set(null);
         this.uploading.set(false);
       },

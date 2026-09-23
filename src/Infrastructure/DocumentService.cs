@@ -5,11 +5,13 @@ public class DocumentService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentStorage _documentStorage;
+    private readonly IDocumentProcessingQueue _processingQueue;
 
-    public DocumentService(IDocumentRepository documentRepository, IDocumentStorage documentStorage)
+    public DocumentService(IDocumentRepository documentRepository, IDocumentStorage documentStorage, IDocumentProcessingQueue processingQueue)
     {
         _documentRepository = documentRepository;
         _documentStorage = documentStorage;
+        _processingQueue = processingQueue;
     }
 
     public async Task<List<Document>> GetDocumentsAsync(int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
@@ -22,7 +24,7 @@ public class DocumentService
         return await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
     }
 
-    public async Task<string> SaveDocumentAsync(UploadDocumentRequest file, CancellationToken cancellationToken = default)
+    public async Task<Document> SaveDocumentAsync(UploadDocumentRequest file, CancellationToken cancellationToken = default)
     {
         var documentId = Guid.NewGuid();
 
@@ -47,6 +49,11 @@ public class DocumentService
 
         await _documentRepository.CreateDocumentAsync(document, cancellationToken);
 
-        return blobName;
+        // Queued for processing: mark Processing before enqueueing so the worker's result can't be overwritten.
+        await _documentRepository.UpdateStatusAsync(documentId, DocumentStatus.Processing, null, cancellationToken);
+        document.Status = DocumentStatus.Processing;
+        await _processingQueue.EnqueueAsync(documentId, cancellationToken);
+
+        return document;
     }
 }

@@ -16,14 +16,16 @@ const sample: DocumentSummary = {
   processedAt: null,
 };
 
-async function render(getDocuments: () => unknown, uploads = signal(0)) {
+async function render(getDocuments: () => unknown, uploads = signal(0), settle = true) {
   await TestBed.configureTestingModule({
     imports: [DocumentList],
     providers: [{ provide: DocumentService, useValue: { getDocuments, uploads } }],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DocumentList);
-  await fixture.whenStable();
+  if (settle) {
+    await fixture.whenStable();
+  }
   return { fixture, el: fixture.nativeElement as HTMLElement };
 }
 
@@ -66,5 +68,28 @@ describe('DocumentList', () => {
     await fixture.whenStable();
 
     expect(getDocuments).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps refreshing while a document is processing, then stops', async () => {
+    vi.useFakeTimers();
+    try {
+      const processing = { ...sample, status: DocumentStatus.Processing };
+      const getDocuments = vi
+        .fn()
+        .mockReturnValueOnce(of([processing]))
+        .mockReturnValue(of([sample]));
+      const { fixture } = await render(getDocuments, signal(0), false);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getDocuments).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(getDocuments).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(getDocuments).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
