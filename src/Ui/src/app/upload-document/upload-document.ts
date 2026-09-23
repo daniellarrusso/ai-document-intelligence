@@ -1,61 +1,44 @@
-import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { DocumentService } from '../document-list/document.service';
 
 @Component({
   selector: 'app-upload-document',
-  imports: [CommonModule],
   templateUrl: './upload-document.html',
   styleUrl: './upload-document.css',
 })
 export class UploadDocument {
+  private readonly documentService = inject(DocumentService);
+
   protected readonly title = 'Upload Document';
 
-  selectedFile: File | null = null;
-  uploading = signal(false);
-  message = signal('');
-
-  constructor() {}
+  readonly selectedFile = signal<File | null>(null);
+  readonly uploading = signal(false);
+  readonly message = signal('');
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-      this.selectedFile = input.files[0];
-    }
+    this.selectedFile.set(input.files?.[0] ?? null);
   }
 
   upload(): void {
-    if (!this.selectedFile) {
+    const file = this.selectedFile();
+    if (!file) {
       return;
     }
 
     this.uploading.set(true);
     this.message.set('');
 
-    // Connect to your backend service to upload the file here. 'http://localhost:5265/api/document'
-    const formData = new FormData();
-    formData.append('file', this.selectedFile);
-
-    fetch('http://localhost:5265/api/document', {
-      method: 'POST',
-      body: formData,
-    })
-      .then((response) => {
-        console.log('Response status:', response.status);
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log('Upload response data:', data);
+    this.documentService.upload(file).subscribe({
+      next: () => {
         this.message.set('File uploaded successfully!');
-        this.selectedFile = null;
-      })
-      .catch((error) => {
-        this.message.set('File upload failed!');
-      })
-      .finally(() => {
+        this.selectedFile.set(null);
         this.uploading.set(false);
-      });
+      },
+      error: () => {
+        this.message.set('File upload failed!');
+        this.uploading.set(false);
+      },
+    });
   }
 }
