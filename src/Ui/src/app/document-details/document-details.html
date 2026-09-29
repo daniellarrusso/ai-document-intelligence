@@ -43,6 +43,21 @@
     </dl>
 
     <div class="mt-6">
+      <h3 class="text-xs uppercase tracking-wide text-slate-500">Summary</h3>
+      @if (doc.summary) {
+        <p class="mt-2 text-sm text-slate-800">{{ doc.summary }}</p>
+      } @else if (doc.status === DocumentStatus.Failed) {
+        <p class="mt-2 text-sm text-red-600">Text extraction failed for this document.</p>
+      } @else if (doc.status === DocumentStatus.Processing) {
+        <p class="mt-2 text-sm text-slate-500">Still processing...</p>
+      } @else if (doc.status === DocumentStatus.Completed) {
+        <p class="mt-2 text-sm text-slate-500">Summary unavailable.</p>
+      } @else {
+        <p class="mt-2 text-sm text-slate-500">No summary available.</p>
+      }
+    </div>
+
+    <div class="mt-6">
       <h3 class="text-xs uppercase tracking-wide text-slate-500">Extracted text</h3>
       @if (doc.extractedText) {
         <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{{ doc.extractedText }}</pre>

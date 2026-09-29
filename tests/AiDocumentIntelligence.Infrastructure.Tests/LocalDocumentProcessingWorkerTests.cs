@@ -11,6 +11,7 @@ public class LocalDocumentProcessingWorkerTests
     private readonly Mock<IDocumentRepository> _repositoryMock = new();
     private readonly Mock<IDocumentStorage> _storageMock = new();
     private readonly Mock<IDocumentTextExtractor> _extractorMock = new();
+    private readonly Mock<IDocumentSummarizer> _summarizerMock = new();
 
     private static Document CreateDocument(Guid id) =>
         new() { Id = id, BlobName = "documents/x/original/file.pdf", ContentType = "application/pdf" };
@@ -21,6 +22,7 @@ public class LocalDocumentProcessingWorkerTests
             .AddSingleton(_repositoryMock.Object)
             .AddSingleton(_storageMock.Object)
             .AddSingleton(_extractorMock.Object)
+            .AddSingleton(_summarizerMock.Object)
             .BuildServiceProvider();
         return new LocalDocumentProcessingWorker(
             new LocalDocumentProcessingQueue(),
@@ -38,10 +40,33 @@ public class LocalDocumentProcessingWorkerTests
         _extractorMock
             .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
             .ReturnsAsync("extracted text");
+        _summarizerMock.Setup(s => s.SummarizeAsync("extracted text", It.IsAny<CancellationToken>())).ReturnsAsync("summary text");
 
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
         _repositoryMock.Verify(r => r.CompleteProcessingAsync(id, "extracted text", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateSummaryAsync(id, "summary text", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SummarizationFails_StillCompletesDocumentWithoutFailingIt()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("extracted text");
+        _summarizerMock
+            .Setup(s => s.SummarizeAsync("extracted text", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Ollama is not running"));
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _repositoryMock.Verify(r => r.CompleteProcessingAsync(id, "extracted text", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateSummaryAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<Guid>(), DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -114,12 +139,14 @@ public class LocalDocumentProcessingWorkerTests
         _extractorMock
             .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), goodDocument.ContentType, It.IsAny<CancellationToken>()))
             .ReturnsAsync("extracted text");
+        _summarizerMock.Setup(s => s.SummarizeAsync("extracted text", It.IsAny<CancellationToken>())).ReturnsAsync("summary text");
 
         var queue = new LocalDocumentProcessingQueue();
         var services = new ServiceCollection()
             .AddSingleton(_repositoryMock.Object)
             .AddSingleton(_storageMock.Object)
             .AddSingleton(_extractorMock.Object)
+            .AddSingleton(_summarizerMock.Object)
             .BuildServiceProvider();
         var sut = new LocalDocumentProcessingWorker(
             queue, services.GetRequiredService<IServiceScopeFactory>(),

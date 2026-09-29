@@ -15,6 +15,7 @@ const sample: DocumentSummary = {
   uploadedAt: '2026-01-01T10:00:00Z',
   processedAt: '2026-01-01T10:00:02Z',
   extractedText: 'Hello World',
+  summary: 'A brief report about hello world.',
 };
 
 async function render(service: Partial<Record<'getDocument' | 'delete', unknown>>) {
@@ -55,7 +56,7 @@ describe('DocumentDetails', () => {
   });
 
   it('shows a processing message while extraction is in progress', async () => {
-    const processing = { ...sample, status: DocumentStatus.Processing, extractedText: null };
+    const processing = { ...sample, status: DocumentStatus.Processing, extractedText: null, summary: null };
     const { el } = await render({ getDocument: () => of(processing) });
 
     expect(el.querySelector('pre')).toBeNull();
@@ -63,11 +64,24 @@ describe('DocumentDetails', () => {
   });
 
   it('shows a failure message when extraction failed', async () => {
-    const failed = { ...sample, status: DocumentStatus.Failed, extractedText: null };
+    const failed = { ...sample, status: DocumentStatus.Failed, extractedText: null, summary: null };
     const { el } = await render({ getDocument: () => of(failed) });
 
     expect(el.querySelector('pre')).toBeNull();
     expect(el.textContent).toContain('Text extraction failed for this document.');
+  });
+
+  it('renders the summary when present', async () => {
+    const { el } = await render({ getDocument: () => of(sample) });
+
+    expect(el.textContent).toContain('A brief report about hello world.');
+  });
+
+  it('shows summary unavailable when completed without a summary', async () => {
+    const noSummary = { ...sample, summary: null };
+    const { el } = await render({ getDocument: () => of(noSummary) });
+
+    expect(el.textContent).toContain('Summary unavailable.');
   });
 
   it('shows not found when the API returns 404', async () => {

@@ -16,4 +16,7 @@ public interface IDocumentRepository
 
     // Stores the extracted text and marks the document Completed. No-op if the document does not exist.
     Task CompleteProcessingAsync(Guid id, string extractedText, DateTime processedAt, CancellationToken cancellationToken = default);
+
+    // Stores a generated summary. Best-effort enrichment: does not affect document status. No-op if the document does not exist.
+    Task UpdateSummaryAsync(Guid id, string summary, CancellationToken cancellationToken = default);
 }

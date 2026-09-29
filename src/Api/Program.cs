@@ -9,6 +9,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
 builder.Services.AddScoped<IDocumentTextExtractor, PdfDocumentTextExtractor>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
+builder.Services.AddHttpClient<IDocumentSummarizer, OllamaDocumentSummarizer>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
+    client.BaseAddress = new Uri(options.BaseUrl);
+});
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
 builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
@@ -23,6 +28,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.Configure<AzureStorageOptions>(
     builder.Configuration.GetSection("AzureStorage"));
+
+builder.Services.Configure<OllamaOptions>(
+    builder.Configuration.GetSection("Ollama"));
 
 builder.Services.AddSingleton(sp =>
 {

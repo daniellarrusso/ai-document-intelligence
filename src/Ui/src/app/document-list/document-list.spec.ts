@@ -16,6 +16,7 @@ const sample: DocumentSummary = {
   uploadedAt: '2026-01-01T10:00:00Z',
   processedAt: null,
   extractedText: null,
+  summary: null,
 };
 
 async function render(getDocuments: () => unknown, uploads = signal(0), settle = true) {

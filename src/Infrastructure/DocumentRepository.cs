@@ -55,6 +55,18 @@ public class DocumentRepository : IDocumentRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateSummaryAsync(Guid id, string summary, CancellationToken cancellationToken = default)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (document == null)
+        {
+            return;
+        }
+
+        document.Summary = summary;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<Document?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);

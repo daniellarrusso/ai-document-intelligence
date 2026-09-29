@@ -19,4 +19,6 @@ public class Document
     public DateTime? ProcessedAt { get; set; }
 
     public string? ExtractedText { get; set; }
+
+    public string? Summary { get; set; }
 }

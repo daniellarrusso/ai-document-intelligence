@@ -15,4 +15,5 @@ export interface DocumentSummary {
   uploadedAt: string;
   processedAt: string | null;
   extractedText: string | null;
+  summary: string | null;
 }
