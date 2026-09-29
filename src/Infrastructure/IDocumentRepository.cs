@@ -13,4 +13,7 @@ public interface IDocumentRepository
 
     // Sets a document's status (and processed timestamp). No-op if the document does not exist.
     Task UpdateStatusAsync(Guid id, DocumentStatus status, DateTime? processedAt = null, CancellationToken cancellationToken = default);
+
+    // Stores the extracted text and marks the document Completed. No-op if the document does not exist.
+    Task CompleteProcessingAsync(Guid id, string extractedText, DateTime processedAt, CancellationToken cancellationToken = default);
 }

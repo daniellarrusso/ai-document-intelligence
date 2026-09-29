@@ -41,6 +41,20 @@ public class DocumentRepository : IDocumentRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task CompleteProcessingAsync(Guid id, string extractedText, DateTime processedAt, CancellationToken cancellationToken = default)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (document == null)
+        {
+            return;
+        }
+
+        document.Status = DocumentStatus.Completed;
+        document.ProcessedAt = processedAt;
+        document.ExtractedText = extractedText;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<Document?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);

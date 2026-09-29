@@ -15,6 +15,7 @@ const sample: DocumentSummary = {
   status: DocumentStatus.Completed,
   uploadedAt: '2026-01-01T10:00:00Z',
   processedAt: null,
+  extractedText: null,
 };
 
 async function render(getDocuments: () => unknown, uploads = signal(0), settle = true) {

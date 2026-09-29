@@ -17,4 +17,6 @@ public class Document
     public DateTime UploadedAt { get; set; }
 
     public DateTime? ProcessedAt { get; set; }
+
+    public string? ExtractedText { get; set; }
 }

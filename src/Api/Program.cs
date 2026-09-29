@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
+builder.Services.AddScoped<IDocumentTextExtractor, PdfDocumentTextExtractor>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();

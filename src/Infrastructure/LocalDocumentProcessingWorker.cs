@@ -3,24 +3,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-// Simulates AI processing: waits, then marks the document Completed (or Failed on error).
+// Processes queued documents: downloads the stored blob and extracts its text content.
 public class LocalDocumentProcessingWorker : BackgroundService
 {
     private readonly LocalDocumentProcessingQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<LocalDocumentProcessingWorker> _logger;
-    private readonly TimeSpan _processingDelay;
 
     public LocalDocumentProcessingWorker(
         LocalDocumentProcessingQueue queue,
         IServiceScopeFactory scopeFactory,
-        ILogger<LocalDocumentProcessingWorker> logger,
-        TimeSpan? processingDelay = null)
+        ILogger<LocalDocumentProcessingWorker> logger)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _processingDelay = processingDelay ?? TimeSpan.FromSeconds(2);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -53,8 +50,20 @@ public class LocalDocumentProcessingWorker : BackgroundService
 
         try
         {
-            await Task.Delay(_processingDelay, cancellationToken);
-            await repository.UpdateStatusAsync(documentId, DocumentStatus.Completed, DateTime.UtcNow, cancellationToken);
+            var document = await repository.GetDocumentByIdAsync(documentId, cancellationToken);
+            if (document == null)
+            {
+                _logger.LogWarning("Document {DocumentId} no longer exists; skipping processing", documentId);
+                return;
+            }
+
+            var storage = scope.ServiceProvider.GetRequiredService<IDocumentStorage>();
+            var extractor = scope.ServiceProvider.GetRequiredService<IDocumentTextExtractor>();
+
+            await using var content = await storage.DownloadAsync(document.BlobName, cancellationToken);
+            var extractedText = await extractor.ExtractTextAsync(content, document.ContentType, cancellationToken);
+
+            await repository.CompleteProcessingAsync(documentId, extractedText, DateTime.UtcNow, cancellationToken);
         }
         catch (OperationCanceledException)
         {

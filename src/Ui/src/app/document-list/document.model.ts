@@ -14,4 +14,5 @@ export interface DocumentSummary {
   status: DocumentStatus;
   uploadedAt: string;
   processedAt: string | null;
+  extractedText: string | null;
 }

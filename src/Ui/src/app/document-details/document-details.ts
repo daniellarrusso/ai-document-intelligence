@@ -14,6 +14,8 @@ export class DocumentDetails {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
+  protected readonly DocumentStatus = DocumentStatus;
+
   protected readonly document = signal<DocumentSummary | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal('');

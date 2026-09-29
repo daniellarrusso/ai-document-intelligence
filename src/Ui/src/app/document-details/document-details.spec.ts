@@ -14,6 +14,7 @@ const sample: DocumentSummary = {
   status: DocumentStatus.Completed,
   uploadedAt: '2026-01-01T10:00:00Z',
   processedAt: '2026-01-01T10:00:02Z',
+  extractedText: 'Hello World',
 };
 
 async function render(service: Partial<Record<'getDocument' | 'delete', unknown>>) {
@@ -45,6 +46,28 @@ describe('DocumentDetails', () => {
     expect(el.textContent).toContain('Completed');
     expect(el.textContent).toContain('2.0 KB');
     expect(el.textContent).toContain('application/pdf');
+  });
+
+  it('renders the extracted text when present', async () => {
+    const { el } = await render({ getDocument: () => of(sample) });
+
+    expect(el.querySelector('pre')?.textContent).toContain('Hello World');
+  });
+
+  it('shows a processing message while extraction is in progress', async () => {
+    const processing = { ...sample, status: DocumentStatus.Processing, extractedText: null };
+    const { el } = await render({ getDocument: () => of(processing) });
+
+    expect(el.querySelector('pre')).toBeNull();
+    expect(el.textContent).toContain('Still processing...');
+  });
+
+  it('shows a failure message when extraction failed', async () => {
+    const failed = { ...sample, status: DocumentStatus.Failed, extractedText: null };
+    const { el } = await render({ getDocument: () => of(failed) });
+
+    expect(el.querySelector('pre')).toBeNull();
+    expect(el.textContent).toContain('Text extraction failed for this document.');
   });
 
   it('shows not found when the API returns 404', async () => {
