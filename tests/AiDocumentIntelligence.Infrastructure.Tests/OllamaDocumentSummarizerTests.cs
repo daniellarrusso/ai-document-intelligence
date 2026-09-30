@@ -1,32 +1,20 @@
-using System.Net;
-using System.Text;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.AI;
 using Moq;
-using Moq.Protected;
 using Xunit;
 
 namespace AiDocumentIntelligence.Infrastructure.Tests;
 
 public class OllamaDocumentSummarizerTests
 {
-    private readonly Mock<HttpMessageHandler> _handlerMock = new();
+    private readonly Mock<IChatClient> _chatClientMock = new();
 
-    private OllamaDocumentSummarizer CreateSut()
-    {
-        var httpClient = new HttpClient(_handlerMock.Object) { BaseAddress = new Uri("http://localhost:11434") };
-        var options = Options.Create(new OllamaOptions { BaseUrl = "http://localhost:11434", Model = "llama3.2" });
-        return new OllamaDocumentSummarizer(httpClient, options);
-    }
+    private OllamaDocumentSummarizer CreateSut() => new(_chatClientMock.Object);
 
-    private void SetupResponse(HttpStatusCode statusCode, string content)
+    private void SetupResponse(string text)
     {
-        _handlerMock
-            .Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(statusCode)
-            {
-                Content = new StringContent(content, Encoding.UTF8, "application/json")
-            });
+        _chatClientMock
+            .Setup(c => c.GetResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
     }
 
     [Theory]
@@ -45,7 +33,7 @@ public class OllamaDocumentSummarizerTests
     [Fact]
     public async Task SummarizeAsync_ValidText_ReturnsSummaryFromResponse()
     {
-        SetupResponse(HttpStatusCode.OK, """{"response":"A concise summary.","done":true}""");
+        SetupResponse("A concise summary.");
         var sut = CreateSut();
 
         var result = await sut.SummarizeAsync("Some long document text.");
@@ -54,36 +42,42 @@ public class OllamaDocumentSummarizerTests
     }
 
     [Fact]
-    public async Task SummarizeAsync_NonSuccessStatusCode_ThrowsInvalidOperationException()
+    public async Task SummarizeAsync_EmptyResponseText_ThrowsInvalidOperationException()
     {
-        SetupResponse(HttpStatusCode.InternalServerError, "");
-        var sut = CreateSut();
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => sut.SummarizeAsync("text"));
-
-        Assert.IsType<HttpRequestException>(ex.InnerException);
-    }
-
-    [Fact]
-    public async Task SummarizeAsync_EmptyResponseField_ThrowsInvalidOperationException()
-    {
-        SetupResponse(HttpStatusCode.OK, """{"response":null,"done":true}""");
+        SetupResponse(string.Empty);
         var sut = CreateSut();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => sut.SummarizeAsync("text"));
     }
 
     [Fact]
-    public async Task SummarizeAsync_HttpClientThrows_WrapsInInvalidOperationException()
+    public async Task SummarizeAsync_ChatClientThrows_WrapsInInvalidOperationException()
     {
-        _handlerMock
-            .Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+        _chatClientMock
+            .Setup(c => c.GetResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection refused"));
         var sut = CreateSut();
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => sut.SummarizeAsync("text"));
 
         Assert.IsType<HttpRequestException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task SummarizeAsync_LongText_TruncatesTo8000Characters()
+    {
+        ChatMessage? capturedMessage = null;
+        _chatClientMock
+            .Setup(c => c.GetResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((messages, _, _) => capturedMessage = messages.Single())
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "summary")));
+        var sut = CreateSut();
+        var longText = new string('a', 10_000);
+
+        await sut.SummarizeAsync(longText);
+
+        Assert.NotNull(capturedMessage);
+        Assert.Contains(new string('a', 8000), capturedMessage!.Text);
+        Assert.DoesNotContain(new string('a', 8001), capturedMessage.Text);
     }
 }

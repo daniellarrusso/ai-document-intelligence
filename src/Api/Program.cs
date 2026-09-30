@@ -1,7 +1,9 @@
 using AiDocumentIntelligence.Infrastructure;
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,10 +11,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
 builder.Services.AddScoped<IDocumentTextExtractor, PdfDocumentTextExtractor>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
-builder.Services.AddHttpClient<IDocumentSummarizer, OllamaDocumentSummarizer>((sp, client) =>
+builder.Services.AddScoped<IDocumentSummarizer, OllamaDocumentSummarizer>();
+builder.Services.AddSingleton<IChatClient>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
-    client.BaseAddress = new Uri(options.BaseUrl);
+    return new OllamaApiClient(new Uri(options.BaseUrl), options.Model);
 });
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
