@@ -1,4 +1,5 @@
 using AiDocumentIntelligence.Domain;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -118,6 +119,47 @@ public class LocalDocumentProcessingWorkerTests
         _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.ExtractingText, null, It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsNotNull<DateTime?>(), It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.MarkCompletedAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SaveExtractedTextFails_MarksDocumentFailed()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("extracted text");
+        _repositoryMock
+            .Setup(r => r.SaveExtractedTextAsync(id, "extracted text", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateException());
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsNotNull<DateTime?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateSummaryAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SaveExtractedTextFailsAndFailureUpdateAlsoFails_DoesNotThrow()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("extracted text");
+        _repositoryMock
+            .Setup(r => r.SaveExtractedTextAsync(id, "extracted text", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateException());
+        _repositoryMock
+            .Setup(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateException());
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
     }
 
     [Fact]

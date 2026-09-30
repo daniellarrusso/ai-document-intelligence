@@ -78,7 +78,25 @@ public class LocalDocumentProcessingWorker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Processing failed for document {DocumentId}", documentId);
+            await TryMarkFailedAsync(documentId);
+        }
+    }
+
+    // The DbContext used above may be left in a bad state by a failed SaveChangesAsync (e.g. the change
+    // tracker still holds the entity that caused the failure), so recording Failed uses a fresh scope/context
+    // rather than reusing it. If even this fails, we log instead of letting it go unhandled and silently
+    // leaving the document stuck at its last status, which the UI would never learn is actually a failure.
+    private async Task TryMarkFailedAsync(Guid documentId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IDocumentRepository>();
             await repository.UpdateStatusAsync(documentId, DocumentStatus.Failed, DateTime.UtcNow, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to record Failed status for document {DocumentId}; it will remain stuck at its last status", documentId);
         }
     }
 
