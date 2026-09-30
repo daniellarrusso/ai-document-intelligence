@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DocumentStatus, DocumentSummary } from './document.model';
+import { DocumentStatus, DocumentSummary, documentStatusLabel } from './document.model';
 import { DocumentService } from './document.service';
 
 const POLL_INTERVAL_MS = 2000;
@@ -48,19 +48,24 @@ export class DocumentList {
     });
   }
 
+  private static readonly IN_FLIGHT_STATUSES = new Set([
+    DocumentStatus.Uploaded,
+    DocumentStatus.Processing,
+    DocumentStatus.ExtractingText,
+    DocumentStatus.GeneratingSummary,
+  ]);
+
   // Refresh until in-flight documents reach a terminal status (Completed/Failed).
   private schedulePollIfProcessing(documents: DocumentSummary[]): void {
     clearTimeout(this.pollTimer);
-    const inFlight = documents.some(
-      (d) => d.status === DocumentStatus.Uploaded || d.status === DocumentStatus.Processing,
-    );
+    const inFlight = documents.some((d) => DocumentList.IN_FLIGHT_STATUSES.has(d.status));
     if (inFlight) {
       this.pollTimer = setTimeout(() => this.load(), POLL_INTERVAL_MS);
     }
   }
 
   protected statusLabel(status: DocumentStatus): string {
-    return DocumentStatus[status] ?? 'Unknown';
+    return documentStatusLabel(status);
   }
 
   protected formatSize(bytes: number): string {

@@ -1,5 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
-import { DocumentStatus } from '../document-list/document.model';
+import { Router } from '@angular/router';
 import { DocumentService } from '../document-list/document.service';
 
 @Component({
@@ -9,6 +9,7 @@ import { DocumentService } from '../document-list/document.service';
 })
 export class UploadDocument {
   private readonly documentService = inject(DocumentService);
+  private readonly router = inject(Router);
 
   protected readonly title = 'Upload Document';
 
@@ -30,12 +31,9 @@ export class UploadDocument {
     this.uploading.set(true);
     this.message.set('');
 
+    // Navigate to the details page on success: that's where processing progress is now shown.
     this.documentService.upload(file).subscribe({
-      next: (document) => {
-        this.message.set(`File uploaded successfully! Status: ${DocumentStatus[document.status]}`);
-        this.selectedFile.set(null);
-        this.uploading.set(false);
-      },
+      next: (document) => void this.router.navigateByUrl(`/documents/${document.id}`),
       error: () => {
         this.message.set('File upload failed!');
         this.uploading.set(false);

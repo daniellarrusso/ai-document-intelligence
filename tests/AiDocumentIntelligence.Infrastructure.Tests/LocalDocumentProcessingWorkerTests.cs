@@ -31,7 +31,7 @@ public class LocalDocumentProcessingWorkerTests
     }
 
     [Fact]
-    public async Task ProcessAsync_Success_ExtractsTextAndCompletesDocument()
+    public async Task ProcessAsync_Success_ProgressesThroughStatusesAndCompletesDocument()
     {
         var id = Guid.NewGuid();
         var document = CreateDocument(id);
@@ -44,8 +44,10 @@ public class LocalDocumentProcessingWorkerTests
 
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
-        _repositoryMock.Verify(r => r.CompleteProcessingAsync(id, "extracted text", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.ExtractingText, null, It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.SaveExtractedTextAsync(id, "extracted text", It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateSummaryAsync(id, "summary text", It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -64,8 +66,9 @@ public class LocalDocumentProcessingWorkerTests
 
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
-        _repositoryMock.Verify(r => r.CompleteProcessingAsync(id, "extracted text", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.SaveExtractedTextAsync(id, "extracted text", It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateSummaryAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<Guid>(), DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -78,7 +81,7 @@ public class LocalDocumentProcessingWorkerTests
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
         _storageMock.Verify(s => s.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _repositoryMock.Verify(r => r.CompleteProcessingAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.SaveExtractedTextAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _repositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<Guid>(), It.IsAny<DocumentStatus>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -95,6 +98,8 @@ public class LocalDocumentProcessingWorkerTests
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
         _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsNotNull<DateTime?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.SaveExtractedTextAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -110,7 +115,9 @@ public class LocalDocumentProcessingWorkerTests
 
         await CreateSut().ProcessAsync(id, CancellationToken.None);
 
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.ExtractingText, null, It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsNotNull<DateTime?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -158,7 +165,7 @@ public class LocalDocumentProcessingWorkerTests
         await Task.Delay(500);
         await sut.StopAsync(CancellationToken.None);
 
-        _repositoryMock.Verify(r => r.CompleteProcessingAsync(good, "extracted text", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(good, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

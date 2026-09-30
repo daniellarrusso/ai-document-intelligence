@@ -19,6 +19,25 @@
       </button>
     </div>
 
+    @if (steps().length > 0) {
+      <ul class="mb-6 space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-4" role="status" aria-live="polite">
+        @for (step of steps(); track step.label) {
+          <li class="flex items-center gap-2 text-sm">
+            @if (step.state === 'done') {
+              <span class="text-green-600" aria-hidden="true">✓</span>
+              <span class="text-slate-700">{{ step.label }}</span>
+            } @else if (step.state === 'current') {
+              <span class="animate-pulse text-sky-600" aria-hidden="true">●</span>
+              <span class="font-medium text-slate-900">{{ step.label }}</span>
+            } @else {
+              <span class="text-slate-300" aria-hidden="true">○</span>
+              <span class="text-slate-400">{{ step.label }}</span>
+            }
+          </li>
+        }
+      </ul>
+    }
+
     <dl class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
       <div>
         <dt class="text-xs uppercase tracking-wide text-slate-500">Status</dt>
@@ -48,12 +67,10 @@
         <p class="mt-2 text-sm text-slate-800">{{ doc.summary }}</p>
       } @else if (doc.status === DocumentStatus.Failed) {
         <p class="mt-2 text-sm text-red-600">Text extraction failed for this document.</p>
-      } @else if (doc.status === DocumentStatus.Processing) {
+      } @else if (isInProgress(doc.status)) {
         <p class="mt-2 text-sm text-slate-500">Still processing...</p>
-      } @else if (doc.status === DocumentStatus.Completed) {
-        <p class="mt-2 text-sm text-slate-500">Summary unavailable.</p>
       } @else {
-        <p class="mt-2 text-sm text-slate-500">No summary available.</p>
+        <p class="mt-2 text-sm text-slate-500">Summary unavailable.</p>
       }
     </div>
 
@@ -63,7 +80,7 @@
         <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">{{ doc.extractedText }}</pre>
       } @else if (doc.status === DocumentStatus.Failed) {
         <p class="mt-2 text-sm text-red-600">Text extraction failed for this document.</p>
-      } @else if (doc.status === DocumentStatus.Processing) {
+      } @else if (isInProgress(doc.status)) {
         <p class="mt-2 text-sm text-slate-500">Still processing...</p>
       } @else {
         <p class="mt-2 text-sm text-slate-500">No text was extracted.</p>

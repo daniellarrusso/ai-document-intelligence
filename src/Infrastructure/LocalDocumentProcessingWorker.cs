@@ -57,15 +57,19 @@ public class LocalDocumentProcessingWorker : BackgroundService
                 return;
             }
 
+            await repository.UpdateStatusAsync(documentId, DocumentStatus.ExtractingText, null, cancellationToken);
+
             var storage = scope.ServiceProvider.GetRequiredService<IDocumentStorage>();
             var extractor = scope.ServiceProvider.GetRequiredService<IDocumentTextExtractor>();
 
             await using var content = await storage.DownloadAsync(document.BlobName, cancellationToken);
             var extractedText = await extractor.ExtractTextAsync(content, document.ContentType, cancellationToken);
 
-            await repository.CompleteProcessingAsync(documentId, extractedText, DateTime.UtcNow, cancellationToken);
+            await repository.SaveExtractedTextAsync(documentId, extractedText, cancellationToken);
 
             await TrySummarizeAsync(scope.ServiceProvider, repository, documentId, extractedText, cancellationToken);
+
+            await repository.MarkCompletedAsync(documentId, DateTime.UtcNow, cancellationToken);
         }
         catch (OperationCanceledException)
         {

@@ -1,14 +1,14 @@
 import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentService } from '../document-list/document.service';
-import { DocumentStatus } from '../document-list/document.model';
 import { UploadDocument } from './upload-document';
 
 async function setup(upload: (file: File) => unknown) {
   await TestBed.configureTestingModule({
     imports: [UploadDocument],
-    providers: [{ provide: DocumentService, useValue: { upload } }],
+    providers: [provideRouter([]), { provide: DocumentService, useValue: { upload } }],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(UploadDocument);
@@ -28,9 +28,10 @@ describe('UploadDocument', () => {
     expect(button.disabled).toBe(false);
   });
 
-  it('uploads the selected file and reports success', async () => {
-    const upload = vi.fn(() => of({ status: DocumentStatus.Processing }));
+  it('uploads the selected file and navigates to its details page', async () => {
+    const upload = vi.fn(() => of({ id: 'abc123', status: 1 }));
     const fixture = await setup(upload);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     const file = new File(['x'], 'a.txt');
     fixture.componentInstance.selectedFile.set(file);
 
@@ -38,8 +39,7 @@ describe('UploadDocument', () => {
     await fixture.whenStable();
 
     expect(upload).toHaveBeenCalledWith(file);
-    expect(fixture.componentInstance.message()).toBe('File uploaded successfully! Status: Processing');
-    expect(fixture.componentInstance.selectedFile()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith('/documents/abc123');
   });
 
   it('reports failure and keeps the file when the upload fails', async () => {

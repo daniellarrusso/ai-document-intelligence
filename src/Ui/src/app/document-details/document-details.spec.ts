@@ -44,7 +44,7 @@ describe('DocumentDetails', () => {
     const { el } = await render({ getDocument: () => of(sample) });
 
     expect(el.querySelector('h2')?.textContent).toContain('report.pdf');
-    expect(el.textContent).toContain('Completed');
+    expect(el.textContent).toContain('Complete');
     expect(el.textContent).toContain('2.0 KB');
     expect(el.textContent).toContain('application/pdf');
   });
@@ -61,6 +61,63 @@ describe('DocumentDetails', () => {
 
     expect(el.querySelector('pre')).toBeNull();
     expect(el.textContent).toContain('Still processing...');
+  });
+
+  it('shows the progress stepper with the current step highlighted', async () => {
+    const extracting = { ...sample, status: DocumentStatus.ExtractingText, extractedText: null, summary: null };
+    const { el } = await render({ getDocument: () => of(extracting) });
+
+    const steps = Array.from(el.querySelectorAll('[role="status"] li')).map((li) => li.textContent?.trim());
+    expect(steps).toEqual([
+      '✓Processing document...',
+      '●Extracting text...',
+      '○Generating summary...',
+      '○Complete',
+    ]);
+  });
+
+  it('hides the progress stepper once the document is completed', async () => {
+    const { el } = await render({ getDocument: () => of(sample) });
+
+    expect(el.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('hides the progress stepper when the document failed', async () => {
+    const failed = { ...sample, status: DocumentStatus.Failed, extractedText: null, summary: null };
+    const { el } = await render({ getDocument: () => of(failed) });
+
+    expect(el.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('keeps polling while in progress, then stops once completed', async () => {
+    vi.useFakeTimers();
+    try {
+      const extracting = { ...sample, status: DocumentStatus.ExtractingText, extractedText: null, summary: null };
+      const getDocument = vi
+        .fn()
+        .mockReturnValueOnce(of(extracting))
+        .mockReturnValue(of(sample));
+      await TestBed.configureTestingModule({
+        imports: [DocumentDetails],
+        providers: [
+          provideRouter([]),
+          { provide: DocumentService, useValue: { getDocument } },
+          { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'abc']]) } } },
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(DocumentDetails);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getDocument).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(getDocument).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(getDocument).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a failure message when extraction failed', async () => {

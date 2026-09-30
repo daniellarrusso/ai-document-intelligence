@@ -14,8 +14,11 @@ public interface IDocumentRepository
     // Sets a document's status (and processed timestamp). No-op if the document does not exist.
     Task UpdateStatusAsync(Guid id, DocumentStatus status, DateTime? processedAt = null, CancellationToken cancellationToken = default);
 
-    // Stores the extracted text and marks the document Completed. No-op if the document does not exist.
-    Task CompleteProcessingAsync(Guid id, string extractedText, DateTime processedAt, CancellationToken cancellationToken = default);
+    // Stores the extracted text and advances the document to GeneratingSummary. No-op if the document does not exist.
+    Task SaveExtractedTextAsync(Guid id, string extractedText, CancellationToken cancellationToken = default);
+
+    // Marks the document Completed. Called once summarization has been attempted, whether or not it succeeded.
+    Task MarkCompletedAsync(Guid id, DateTime processedAt, CancellationToken cancellationToken = default);
 
     // Stores a generated summary. Best-effort enrichment: does not affect document status. No-op if the document does not exist.
     Task UpdateSummaryAsync(Guid id, string summary, CancellationToken cancellationToken = default);

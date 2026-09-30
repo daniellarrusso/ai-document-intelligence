@@ -37,7 +37,7 @@ describe('DocumentList', () => {
     const { el } = await render(() => of([sample]));
 
     const cells = Array.from(el.querySelectorAll('tbody td')).map((c) => c.textContent?.trim());
-    expect(cells.slice(0, 3)).toEqual(['report.pdf', '2.0 KB', 'Completed']);
+    expect(cells.slice(0, 3)).toEqual(['report.pdf', '2.0 KB', 'Complete']);
   });
 
   it('shows the empty state when there are no documents', async () => {
@@ -90,6 +90,25 @@ describe('DocumentList', () => {
       expect(getDocuments).toHaveBeenCalledTimes(2);
 
       await vi.advanceTimersByTimeAsync(10000);
+      expect(getDocuments).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps refreshing during the extraction and summarization stages', async () => {
+    vi.useFakeTimers();
+    try {
+      const generatingSummary = { ...sample, status: DocumentStatus.GeneratingSummary };
+      const getDocuments = vi
+        .fn()
+        .mockReturnValueOnce(of([generatingSummary]))
+        .mockReturnValue(of([sample]));
+      const { fixture } = await render(getDocuments, signal(0), false);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      await vi.advanceTimersByTimeAsync(2000);
       expect(getDocuments).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
