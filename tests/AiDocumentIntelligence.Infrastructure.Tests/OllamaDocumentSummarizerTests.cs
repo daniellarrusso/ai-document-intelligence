@@ -8,7 +8,7 @@ public class OllamaDocumentSummarizerTests
 {
     private readonly Mock<IChatClient> _chatClientMock = new();
 
-    private OllamaDocumentSummarizer CreateSut() => new(_chatClientMock.Object);
+    private AIChatDocumentSummarizer CreateSut() => new(_chatClientMock.Object);
 
     private void SetupResponse(string text)
     {

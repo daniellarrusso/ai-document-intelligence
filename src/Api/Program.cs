@@ -11,7 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
 builder.Services.AddScoped<IDocumentTextExtractor, PdfDocumentTextExtractor>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
-builder.Services.AddScoped<IDocumentSummarizer, OllamaDocumentSummarizer>();
+builder.Services.AddScoped<IDocumentSummarizer, AIChatDocumentSummarizer>();
 builder.Services.AddSingleton<IChatClient>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;

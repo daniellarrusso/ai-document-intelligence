@@ -3,7 +3,7 @@ using Microsoft.Extensions.AI;
 
 namespace AiDocumentIntelligence.Infrastructure;
 
-public class OllamaDocumentSummarizer : IDocumentSummarizer
+public class AIChatDocumentSummarizer : IDocumentSummarizer
 {
     // Small local models lose coherence and get slow well before their nominal context window.
     // Capping the input keeps latency predictable and the summary focused on the start of the document.
@@ -11,7 +11,7 @@ public class OllamaDocumentSummarizer : IDocumentSummarizer
 
     private readonly IChatClient _chatClient;
 
-    public OllamaDocumentSummarizer(IChatClient chatClient)
+    public AIChatDocumentSummarizer(IChatClient chatClient)
     {
         _chatClient = chatClient;
     }
