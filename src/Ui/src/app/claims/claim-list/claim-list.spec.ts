@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
+import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { Claim, ClaimStatus } from '../claim.model';
 import { ClaimService } from '../claim.service';
@@ -21,7 +22,7 @@ const sample: Claim = {
 async function render(getClaims: (...args: unknown[]) => unknown, created = signal(0), settle = true) {
   await TestBed.configureTestingModule({
     imports: [ClaimList],
-    providers: [{ provide: ClaimService, useValue: { getClaims, created } }],
+    providers: [provideRouter([]), { provide: ClaimService, useValue: { getClaims, created } }],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(ClaimList);
@@ -53,6 +54,14 @@ describe('ClaimList', () => {
       'In review',
       'Unassigned',
     ]);
+  });
+
+  it('links the reference to the claim page', async () => {
+    const { el } = await render(() => of([sample]));
+
+    const link = el.querySelector<HTMLAnchorElement>('tbody a')!;
+    expect(link.textContent?.trim()).toBe('CLM-20260901-AAAA1111');
+    expect(link.getAttribute('href')).toBe('/claims/1');
   });
 
   it('shows the empty state when there are no claims', async () => {

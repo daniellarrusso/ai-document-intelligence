@@ -51,7 +51,11 @@
       <tbody class="divide-y divide-slate-100">
         @for (claim of claims(); track claim.id) {
           <tr>
-            <td class="py-3 pr-4 font-medium">{{ claim.reference }}</td>
+            <td class="py-3 pr-4 font-medium">
+              <a [routerLink]="['/claims', claim.id]" class="text-sky-700 hover:underline">{{
+                claim.reference
+              }}</a>
+            </td>
             <td class="py-3 pr-4">{{ claim.claimantName }}</td>
             <td class="py-3 pr-4">{{ claim.policyNumber }}</td>
             <td class="py-3 pr-4">{{ claim.incidentDate | date: 'mediumDate' }}</td>

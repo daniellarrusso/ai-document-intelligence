@@ -1,5 +1,6 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { CLAIM_STATUSES, Claim, ClaimStatus, claimStatusLabel } from '../claim.model';
 import { ClaimService } from '../claim.service';
 
@@ -8,7 +9,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 @Component({
   selector: 'app-claim-list',
-  imports: [DatePipe, DecimalPipe],
+  imports: [DatePipe, DecimalPipe, RouterLink],
   templateUrl: './claim-list.html',
 })
 export class ClaimList {

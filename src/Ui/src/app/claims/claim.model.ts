@@ -1,3 +1,5 @@
+import { DocumentStatus } from '../document-list/document.model';
+
 /** Mirrors the backend ClaimStatus enum, which is serialised as an integer. */
 export enum ClaimStatus {
   Open = 0,
@@ -53,4 +55,21 @@ export interface CreateClaimRequest {
   incidentDate: string;
   amountClaimed: number;
   assignedTo: string | null;
+}
+
+/** A document as listed under a claim: metadata and summary, without the extracted text. */
+export interface ClaimDocument {
+  id: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  status: DocumentStatus;
+  uploadedAt: string;
+  processedAt: string | null;
+  summary: string | null;
+}
+
+export interface ClaimDetail {
+  claim: Claim;
+  documents: ClaimDocument[];
 }

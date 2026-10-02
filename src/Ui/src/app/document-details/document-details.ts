@@ -35,6 +35,14 @@ export class DocumentDetails {
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
 
+  // Documents that belong to a claim lead back to it rather than to the global document list.
+  protected readonly backLink = computed(() => {
+    const claimId = this.document()?.claimId;
+    return claimId
+      ? { commands: ['/claims', claimId], label: 'Back to claim' }
+      : { commands: ['/'], label: 'Back to documents' };
+  });
+
   protected readonly maxQuestionLength = MAX_QUESTION_LENGTH;
   protected readonly question = signal('');
   protected readonly asking = signal(false);
@@ -118,7 +126,7 @@ export class DocumentDetails {
     this.deleteError.set('');
 
     this.documentService.delete(document.id).subscribe({
-      next: () => void this.router.navigateByUrl('/'),
+      next: () => void this.router.navigateByUrl(document.claimId ? `/claims/${document.claimId}` : '/'),
       error: () => {
         this.deleteError.set('Unable to delete the document. Please try again.');
         this.deleting.set(false);

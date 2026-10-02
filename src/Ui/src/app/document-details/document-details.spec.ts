@@ -160,6 +160,33 @@ describe('DocumentDetails', () => {
     expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to load document.');
   });
 
+  it('links back to the documents list for a standalone document', async () => {
+    const { el } = await render({ getDocument: () => of(sample) });
+
+    const back = el.querySelector<HTMLAnchorElement>('a')!;
+    expect(back.textContent).toContain('Back to documents');
+    expect(back.getAttribute('href')).toBe('/');
+  });
+
+  it('links back to the claim when the document belongs to one', async () => {
+    const { el } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }) });
+
+    const back = el.querySelector<HTMLAnchorElement>('a')!;
+    expect(back.textContent).toContain('Back to claim');
+    expect(back.getAttribute('href')).toBe('/claims/claim-1');
+  });
+
+  it('returns to the claim after deleting one of its documents', async () => {
+    const del = vi.fn(() => of(undefined));
+    const { click } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }), delete: del });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await click('button', 'Delete');
+    await click('[role="dialog"] button', 'Delete');
+
+    expect(navigate).toHaveBeenCalledWith('/claims/claim-1');
+  });
+
   it('asks for confirmation before deleting and does nothing on cancel', async () => {
     const del = vi.fn(() => of(undefined));
     const { el, click } = await render({ getDocument: () => of(sample), delete: del });

@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Claim, ClaimStatus, CreateClaimRequest } from './claim.model';
+import { Claim, ClaimDetail, ClaimDocument, ClaimStatus, CreateClaimRequest } from './claim.model';
 
 export interface ClaimQuery {
   search?: string;
@@ -30,6 +30,18 @@ export class ClaimService {
     }
 
     return this.http.get<Claim[]>(this.baseUrl, { params });
+  }
+
+  getClaim(id: string): Observable<ClaimDetail> {
+    return this.http.get<ClaimDetail>(`${this.baseUrl}/${id}`);
+  }
+
+  /** Uploads a file as a new document of the claim; it is then processed like any other document. */
+  uploadDocument(claimId: string, file: File): Observable<ClaimDocument> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<ClaimDocument>(`${this.baseUrl}/${claimId}/documents`, formData);
   }
 
   createClaim(request: CreateClaimRequest): Observable<Claim> {
