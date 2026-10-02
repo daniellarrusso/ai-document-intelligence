@@ -51,7 +51,7 @@ public class DocumentsController : ControllerBase
             stream,
             file.FileName,
             file.ContentType,
-            file.Length), cancellationToken);
+            file.Length), cancellationToken: cancellationToken);
 
         return Ok(document);
     }

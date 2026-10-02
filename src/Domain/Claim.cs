@@ -2,6 +2,12 @@ namespace AiDocumentIntelligence.Domain;
 
 public class Claim
 {
+    public const int MaxReferenceLength = 50;
+    public const int MaxPolicyNumberLength = 50;
+    public const int MaxNameLength = 200;
+    public const int AmountPrecision = 18;
+    public const int AmountScale = 2;
+
     public Guid Id { get; set; }
 
     public string Reference { get; set; } = null!;

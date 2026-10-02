@@ -110,13 +110,16 @@ docker-compose down
 ```
 src/
 ├── Api/                          # ASP.NET Core REST API
-│   ├── Controllers/              # API endpoints (DocumentsController, WeatherForecastController)
+│   ├── Controllers/              # API endpoints (DocumentsController, ClaimsController, WeatherForecastController)
 │   ├── Program.cs                # DI configuration, middleware setup
 │   ├── appsettings.json          # Production configuration
 │   └── appsettings.Development.json  # Development overrides (Azure Storage, logging)
 ├── Domain/                       # Core business logic and entities
 │   ├── Document.cs               # Main document entity
 │   ├── DocumentStatus.cs         # Document status enum
+│   ├── Claim.cs                  # Claim entity (has many documents)
+│   ├── ClaimStatus.cs            # Claim status enum
+│   ├── CreateClaimRequest.cs     # Create-claim request contract
 │   ├── UploadDocumentRequest.cs  # API request contract
 │   └── IDcoumentStorage.cs       # Storage interface
 ├── Infrastructure/               # Data access and external services
@@ -124,6 +127,9 @@ src/
 │   ├── BlobDocumentStorage.cs    # Azure Blob Storage implementation
 │   ├── DocumentService.cs        # Business logic orchestration
 │   ├── DocumentRepository.cs     # Data access layer
+│   ├── ClaimService.cs           # Claim validation + orchestration
+│   ├── ClaimRepository.cs        # Claim data access
+│   ├── ClaimConfiguration.cs     # EF mapping for Claim
 │   ├── AzureStorageOptions.cs    # Azure configuration
 │   └── Migrations/               # EF Core migrations (PostgreSQL)
 └── Ui/                           # Angular 21 SPA
@@ -148,6 +154,7 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
 - `IDocumentStorage` - Blob storage abstraction (implemented by `BlobDocumentStorage`)
 - `IDocumentRepository` - Data repository pattern for PostgreSQL
 - `DocumentService` - Orchestrates storage + database operations
+- `IClaimRepository` / `ClaimService` - Claim persistence and validation
 - `BlobServiceClient` - Singleton for Azure Blob Storage
 
 ### Database Access
@@ -155,7 +162,7 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
 - **ORM**: Entity Framework Core 9.0 with PostgreSQL
 - **Migrations**: Located in `src/Infrastructure/Migrations/`
 - **Connection string**: Configured in `appsettings.json` (development uses localhost:5432)
-- **DbContext**: `AppDbContext` with `DbSet<Document>`
+- **DbContext**: `AppDbContext` with `DbSet<Document>`, `DbSet<Claim>` and `DbSet<DocumentChunk>`
 
 ### Frontend State Management
 
@@ -169,6 +176,18 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
 - **Development mode**: Uses Azurite emulator (`UseDevelopmentStorage=true`)
 - **Production mode**: Uses real Azure Storage connection string (via configuration)
 - **OpenAI**: Azure OpenAI integration for document processing and RAG
+
+### Claims
+
+- **Model**: `Claim` (`Reference`, `PolicyNumber`, `ClaimantName`, `IncidentDate`, `AmountClaimed`, `Status`, `AssignedTo`, `CreatedAt`). One claim has many documents via the nullable `Document.ClaimId` (null for standalone documents). Deleting a claim is `Restrict`ed while it has documents. Field length limits are constants on `Claim` and shared by validation and the EF mapping.
+- **Endpoints** (`ClaimsController`, `api/claims`):
+  - `POST /` creates a claim → 201. `Reference` is generated (`CLM-yyyyMMdd-XXXXXXXX`), status starts `Open`; invalid input → 400.
+  - `GET /?pageNumber=&pageSize=&q=&status=` lists claims newest first (`pageSize` 1–100). `q` is a case-insensitive substring match on reference, policy number or claimant name (max 100 chars; `%`/`_` match literally); `status` filters by `ClaimStatus` (integer). The response is a bare array, so the UI treats a full page as "maybe more".
+  - `GET /{id}` returns `{ claim, documents[] }` (documents exclude `ExtractedText`); 404 if missing.
+  - `POST /{id}/documents` uploads a multipart `file` and attaches it to the claim (404 if the claim doesn't exist). Goes through the normal processing pipeline.
+- **UI** (`src/Ui/src/app/claims/`, route `/claims`, linked from the header): a create-claim form and a searchable/filterable, paged claims list (`claim.service.ts`, `claim.model.ts`, `claim-list/`, `create-claim/`). There is no claim detail page yet, so documents can't be added to a claim from the UI.
+- Responses use DTOs (`ClaimResponse`, `ClaimDetailResponse`, `ClaimDocumentResponse`); enums serialise as integers.
+- There are no auth checks, and no endpoints yet to update a claim's status/assignee or delete a claim.
 
 ### RAG (question answering over a document)
 
@@ -193,6 +212,7 @@ API allows requests from Angular dev server (`http://localhost:4200`) in develop
 
 - `20260829125915_InitialCreate.cs` - Initial schema with Documents table
 - `20261001202016_AddDocumentChunks.cs` - Enables the `vector` extension and adds `DocumentChunks` (text + 768-dim embedding, HNSW cosine index)
+- `20261002153227_AddClaims.cs` - Adds `Claims` (unique index on `Reference`) and the nullable `Documents.ClaimId` foreign key
 
 ### Adding New Entities
 

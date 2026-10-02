@@ -27,6 +27,8 @@ builder.Services.AddScoped<IDocumentChunkRepository, DocumentChunkRepository>();
 builder.Services.AddScoped<IDocumentIndexer, DocumentIndexer>();
 builder.Services.AddScoped<IDocumentQuestionAnswerer, DocumentQuestionAnswerer>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<IClaimRepository, ClaimRepository>();
+builder.Services.AddScoped<ClaimService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
 builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
 builder.Services.AddHostedService<LocalDocumentProcessingWorker>();
