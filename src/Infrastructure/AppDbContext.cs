@@ -12,6 +12,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Document> Documents => Set<Document>();
 
+    public DbSet<Claim> Claims => Set<Claim>();
+
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
