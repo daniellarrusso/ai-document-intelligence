@@ -170,6 +170,14 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
 - **Production mode**: Uses real Azure Storage connection string (via configuration)
 - **OpenAI**: Azure OpenAI integration for document processing and RAG
 
+### RAG (question answering over a document)
+
+- **Indexing**: after summarising, `LocalDocumentProcessingWorker` calls `IDocumentIndexer` (status `IndexingDocument`), which splits `ExtractedText` with `TextChunker`, embeds the chunks via `IEmbeddingGenerator` (Ollama) and stores them in `DocumentChunks`. Best-effort: a failure leaves the document `Completed` but unqueryable.
+- **Querying**: `POST /api/documents/{id}/ask` with `{ "question": "..." }` → `IDocumentQuestionAnswerer` embeds the question, takes the top 5 chunks by cosine distance (pgvector) for that document and asks the chat model to answer only from them. Returns `{ answer, sources[] }`; 409 if the document has no indexed chunks, 503 if Ollama is unavailable.
+- **Prerequisites**: Postgres runs the `pgvector/pgvector:pg16` image (see `docker-compose.yml`), and the embedding model must be pulled locally: `ollama pull nomic-embed-text` (configured as `Ollama:EmbeddingModel`).
+- **Embedding size is fixed at 768** (`EmbeddingDefaults.Dimensions`, matching `nomic-embed-text`). Switching to a model with a different size needs a migration for the column and a re-index of existing documents.
+- Documents uploaded before this feature have no chunks until they are re-processed.
+
 ### CORS Configuration
 
 API allows requests from Angular dev server (`http://localhost:4200`) in development mode only.
@@ -184,6 +192,7 @@ API allows requests from Angular dev server (`http://localhost:4200`) in develop
 ### Existing Migrations
 
 - `20260829125915_InitialCreate.cs` - Initial schema with Documents table
+- `20261001202016_AddDocumentChunks.cs` - Enables the `vector` extension and adds `DocumentChunks` (text + 768-dim embedding, HNSW cosine index)
 
 ### Adding New Entities
 

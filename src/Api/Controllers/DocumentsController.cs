@@ -1,3 +1,4 @@
+using AiDocumentIntelligence.Domain;
 using AiDocumentIntelligence.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,11 +8,13 @@ public class DocumentsController : ControllerBase
 {
     private readonly ILogger<DocumentsController> _logger;
     private readonly DocumentService _documentService;
+    private readonly IDocumentQuestionAnswerer _questionAnswerer;
 
-    public DocumentsController(ILogger<DocumentsController> logger, DocumentService documentService)
+    public DocumentsController(ILogger<DocumentsController> logger, DocumentService documentService, IDocumentQuestionAnswerer questionAnswerer)
     {
         _logger = logger;
         _documentService = documentService;
+        _questionAnswerer = questionAnswerer;
     }
 
     [HttpGet(Name = "GetDocuments")]
@@ -60,4 +63,41 @@ public class DocumentsController : ControllerBase
 
         return deleted ? NoContent() : NotFound();
     }
+
+    [HttpPost("{id}/ask", Name = "AskDocument")]
+    public async Task<IActionResult> Ask(Guid id, [FromBody] AskDocumentRequest request, CancellationToken cancellationToken)
+    {
+        var question = request.Question?.Trim();
+        if (string.IsNullOrEmpty(question))
+        {
+            return BadRequest("Question cannot be empty.");
+        }
+
+        if (question.Length > DocumentQuestionAnswerer.MaxQuestionLength)
+        {
+            return BadRequest($"Question cannot exceed {DocumentQuestionAnswerer.MaxQuestionLength} characters.");
+        }
+
+        var document = await _documentService.GetDocumentByIdAsync(id, cancellationToken);
+        if (document == null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var answer = await _questionAnswerer.AskAsync(id, question, cancellationToken);
+
+            return answer == null
+                ? Conflict("This document has no searchable content. It may still be processing or indexing may have failed.")
+                : Ok(answer);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "Failed to answer a question about document {DocumentId}", id);
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, detail: "The AI service is currently unavailable. Please try again.");
+        }
+    }
 }
+
+public record AskDocumentRequest(string? Question);

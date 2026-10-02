@@ -1,4 +1,5 @@
 using AiDocumentIntelligence.Infrastructure;
+using AiDocumentIntelligence.Domain;
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -17,6 +18,14 @@ builder.Services.AddSingleton<IChatClient>(sp =>
     var options = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
     return new OllamaApiClient(new Uri(options.BaseUrl), options.Model);
 });
+builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
+    return new OllamaApiClient(new Uri(options.BaseUrl), options.EmbeddingModel);
+});
+builder.Services.AddScoped<IDocumentChunkRepository, DocumentChunkRepository>();
+builder.Services.AddScoped<IDocumentIndexer, DocumentIndexer>();
+builder.Services.AddScoped<IDocumentQuestionAnswerer, DocumentQuestionAnswerer>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
 builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
@@ -27,7 +36,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"), npgsql => npgsql.UseVector()));
 
 builder.Services.Configure<AzureStorageOptions>(
     builder.Configuration.GetSection("AzureStorage"));
