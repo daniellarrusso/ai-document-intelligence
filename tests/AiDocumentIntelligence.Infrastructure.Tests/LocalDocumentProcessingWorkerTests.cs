@@ -13,6 +13,7 @@ public class LocalDocumentProcessingWorkerTests
     private readonly Mock<IDocumentStorage> _storageMock = new();
     private readonly Mock<IDocumentTextExtractor> _extractorMock = new();
     private readonly Mock<IDocumentSummarizer> _summarizerMock = new();
+    private readonly Mock<IDocumentIndexer> _indexerMock = new();
 
     private static Document CreateDocument(Guid id) =>
         new() { Id = id, BlobName = "documents/x/original/file.pdf", ContentType = "application/pdf" };
@@ -24,6 +25,7 @@ public class LocalDocumentProcessingWorkerTests
             .AddSingleton(_storageMock.Object)
             .AddSingleton(_extractorMock.Object)
             .AddSingleton(_summarizerMock.Object)
+            .AddSingleton(_indexerMock.Object)
             .BuildServiceProvider();
         return new LocalDocumentProcessingWorker(
             new LocalDocumentProcessingQueue(),
@@ -71,6 +73,61 @@ public class LocalDocumentProcessingWorkerTests
         _repositoryMock.Verify(r => r.UpdateSummaryAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<Guid>(), DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_Success_IndexesExtractedTextBeforeCompleting()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("extracted text");
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.IndexingDocument, null, It.IsAny<CancellationToken>()), Times.Once);
+        _indexerMock.Verify(i => i.IndexAsync(id, "extracted text", It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_IndexingFails_StillCompletesDocumentWithoutFailingIt()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("extracted text");
+        _indexerMock
+            .Setup(i => i.IndexAsync(id, "extracted text", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Embedding model not found"));
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<Guid>(), DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ExtractedTextIsEmpty_SkipsIndexingAndStillCompletes()
+    {
+        var id = Guid.NewGuid();
+        var document = CreateDocument(id);
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _extractorMock
+            .Setup(e => e.ExtractTextAsync(It.IsAny<Stream>(), document.ContentType, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(string.Empty);
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _indexerMock.Verify(i => i.IndexAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -196,6 +253,7 @@ public class LocalDocumentProcessingWorkerTests
             .AddSingleton(_storageMock.Object)
             .AddSingleton(_extractorMock.Object)
             .AddSingleton(_summarizerMock.Object)
+            .AddSingleton(_indexerMock.Object)
             .BuildServiceProvider();
         var sut = new LocalDocumentProcessingWorker(
             queue, services.GetRequiredService<IServiceScopeFactory>(),

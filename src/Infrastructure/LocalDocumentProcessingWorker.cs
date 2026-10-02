@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-// Processes queued documents: downloads the stored blob, extracts its text content, then generates a summary.
+// Processes queued documents: downloads the stored blob, extracts its text content, generates a summary, then indexes the text for retrieval (RAG).
 public class LocalDocumentProcessingWorker : BackgroundService
 {
     private readonly LocalDocumentProcessingQueue _queue;
@@ -69,6 +69,9 @@ public class LocalDocumentProcessingWorker : BackgroundService
 
             await TrySummarizeAsync(scope.ServiceProvider, repository, documentId, extractedText, cancellationToken);
 
+            await repository.UpdateStatusAsync(documentId, DocumentStatus.IndexingDocument, null, cancellationToken);
+            await TryIndexAsync(scope.ServiceProvider, documentId, extractedText, cancellationToken);
+
             await repository.MarkCompletedAsync(documentId, DateTime.UtcNow, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -122,6 +125,35 @@ public class LocalDocumentProcessingWorker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Summarization failed for document {DocumentId}; document remains Completed without a summary", documentId);
+        }
+    }
+
+    // Indexing is best-effort like summarization: if it fails (e.g. the embedding model isn't pulled) the document
+    // is still Completed, and asking it questions reports that it has no indexed content.
+    private async Task TryIndexAsync(
+        IServiceProvider services,
+        Guid documentId,
+        string extractedText,
+        CancellationToken cancellationToken)
+    {
+        // Nothing to embed (e.g. a scanned PDF with no text layer).
+        if (string.IsNullOrWhiteSpace(extractedText))
+        {
+            return;
+        }
+
+        try
+        {
+            var indexer = services.GetRequiredService<IDocumentIndexer>();
+            await indexer.IndexAsync(documentId, extractedText, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Indexing failed for document {DocumentId}; document remains Completed but cannot be queried", documentId);
         }
     }
 }

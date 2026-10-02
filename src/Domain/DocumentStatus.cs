@@ -10,5 +10,6 @@ public enum DocumentStatus
     // Appended rather than inserted: Status is persisted as a plain integer, so existing rows'
     // values for Completed/Failed must not shift.
     ExtractingText = 4,
-    GeneratingSummary = 5
+    GeneratingSummary = 5,
+    IndexingDocument = 6
 }

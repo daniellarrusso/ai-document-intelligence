@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { DocumentSummary } from './document.model';
+import { DocumentAnswer, DocumentSummary } from './document.model';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -23,6 +23,10 @@ export class DocumentService {
 
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+
+  ask(id: string, question: string): Observable<DocumentAnswer> {
+    return this.http.post<DocumentAnswer>(`${this.baseUrl}/${id}/ask`, { question });
   }
 
   upload(file: File): Observable<DocumentSummary> {

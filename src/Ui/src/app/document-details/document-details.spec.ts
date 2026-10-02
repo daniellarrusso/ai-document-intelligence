@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentStatus, DocumentSummary } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
@@ -18,7 +18,7 @@ const sample: DocumentSummary = {
   summary: 'A brief report about hello world.',
 };
 
-async function render(service: Partial<Record<'getDocument' | 'delete', unknown>>) {
+async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>) {
   await TestBed.configureTestingModule({
     imports: [DocumentDetails],
     providers: [
@@ -31,12 +31,18 @@ async function render(service: Partial<Record<'getDocument' | 'delete', unknown>
   const fixture = TestBed.createComponent(DocumentDetails);
   await fixture.whenStable();
   const el = fixture.nativeElement as HTMLElement;
+  const type = async (value: string) => {
+    const textarea = el.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = value;
+    textarea.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+  };
   const click = async (selector: string, text?: string) => {
     const buttons = Array.from(el.querySelectorAll<HTMLButtonElement>(selector));
     buttons.find((b) => !text || b.textContent?.trim() === text)!.click();
     await fixture.whenStable();
   };
-  return { fixture, el, click };
+  return { fixture, el, click, type };
 }
 
 describe('DocumentDetails', () => {
@@ -72,6 +78,7 @@ describe('DocumentDetails', () => {
       '✓Processing document...',
       '●Extracting text...',
       '○Generating summary...',
+      '○Indexing for search...',
       '○Complete',
     ]);
   });
@@ -189,5 +196,98 @@ describe('DocumentDetails', () => {
 
     expect(el.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain('Unable to delete');
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  describe('asking questions', () => {
+    const answer = {
+      answer: 'Flooding is excluded [1].',
+      sources: [
+        { chunkIndex: 3, text: 'Damage caused by flooding is not covered.', score: 0.912 },
+        { chunkIndex: 7, text: 'Gradual leaks are excluded.', score: 0.8 },
+      ],
+    };
+
+    it('only offers the question box once the document is completed', async () => {
+      const processing = { ...sample, status: DocumentStatus.IndexingDocument };
+      const { el } = await render({ getDocument: () => of(processing) });
+
+      expect(el.querySelector('textarea')).toBeNull();
+    });
+
+    it('does not offer the question box when the document failed', async () => {
+      const failed = { ...sample, status: DocumentStatus.Failed };
+      const { el } = await render({ getDocument: () => of(failed) });
+
+      expect(el.querySelector('textarea')).toBeNull();
+    });
+
+    it('disables Ask until a question is entered', async () => {
+      const { el, type } = await render({ getDocument: () => of(sample), ask: vi.fn() });
+      const ask = el.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
+      expect(ask.disabled).toBe(true);
+
+      await type('   ');
+      expect(ask.disabled).toBe(true);
+
+      await type('What is excluded?');
+      expect(ask.disabled).toBe(false);
+    });
+
+    it('sends the trimmed question and shows the answer with its sources', async () => {
+      const ask = vi.fn(() => of(answer));
+      const { el, click, type } = await render({ getDocument: () => of(sample), ask });
+
+      await type('  What are the exclusions for water damage?  ');
+      await click('form button[type="submit"]');
+
+      expect(ask).toHaveBeenCalledWith('abc', 'What are the exclusions for water damage?');
+      expect(el.textContent).toContain('Flooding is excluded [1].');
+      expect(el.querySelector('details summary')?.textContent).toContain('Sources (2)');
+      const sources = Array.from(el.querySelectorAll('details li')).map((li) => li.textContent);
+      expect(sources[0]).toContain('Relevance 91%');
+      expect(sources[0]).toContain('Damage caused by flooding is not covered.');
+      expect(sources[1]).toContain('Gradual leaks are excluded.');
+    });
+
+    it('shows a searching state and blocks resubmission while waiting', async () => {
+      const ask = vi.fn(() => NEVER);
+      const { el, click, type } = await render({ getDocument: () => of(sample), ask });
+
+      await type('What is excluded?');
+      await click('form button[type="submit"]');
+
+      const button = el.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
+      expect(button.textContent?.trim()).toBe('Searching document...');
+      expect(button.disabled).toBe(true);
+      expect(el.querySelector<HTMLTextAreaElement>('textarea')!.disabled).toBe(true);
+    });
+
+    it('explains when the document has no searchable content (409)', async () => {
+      const ask = vi.fn(() => throwError(() => ({ status: 409 })));
+      const { el, click, type } = await render({ getDocument: () => of(sample), ask });
+
+      await type('What is excluded?');
+      await click('form button[type="submit"]');
+
+      expect(el.querySelector('form + [role="alert"]')?.textContent).toContain('no searchable content');
+      expect(el.querySelector<HTMLButtonElement>('form button[type="submit"]')!.disabled).toBe(false);
+    });
+
+    it('shows a generic error when the request fails and clears it on the next attempt', async () => {
+      const ask = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => ({ status: 503 })))
+        .mockReturnValue(of(answer));
+      const { el, click, type } = await render({ getDocument: () => of(sample), ask });
+
+      await type('What is excluded?');
+      await click('form button[type="submit"]');
+      expect(el.querySelector('form + [role="alert"]')?.textContent).toContain('Unable to get an answer');
+      expect(el.textContent).not.toContain('Flooding is excluded');
+
+      await click('form button[type="submit"]');
+      expect(el.querySelector('form + [role="alert"]')).toBeNull();
+      expect(el.textContent).toContain('Flooding is excluded [1].');
+    });
   });
 });
