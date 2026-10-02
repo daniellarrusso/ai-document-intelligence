@@ -185,7 +185,11 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
   - `GET /?pageNumber=&pageSize=&q=&status=` lists claims newest first (`pageSize` 1–100). `q` is a case-insensitive substring match on reference, policy number or claimant name (max 100 chars; `%`/`_` match literally); `status` filters by `ClaimStatus` (integer). The response is a bare array, so the UI treats a full page as "maybe more".
   - `GET /{id}` returns `{ claim, documents[] }` (documents exclude `ExtractedText`); 404 if missing.
   - `POST /{id}/documents` uploads a multipart `file` and attaches it to the claim (404 if the claim doesn't exist). Goes through the normal processing pipeline.
-- **UI** (`src/Ui/src/app/claims/`, route `/claims`, linked from the header): a create-claim form and a searchable/filterable, paged claims list (`claim.service.ts`, `claim.model.ts`, `claim-list/`, `create-claim/`). There is no claim detail page yet, so documents can't be added to a claim from the UI.
+- **UI** (`src/Ui/src/app/claims/`, linked from the header):
+  - `/claims`: a create-claim form and a searchable/filterable, paged claims list (`claim-list/`, `create-claim/`). Each reference links to the claim.
+  - `/claims/:id` (`claim-details/`, client-rendered): read-only claim details plus its documents, with an upload control that attaches new documents to the claim (`ClaimService.uploadDocument`). The page stays put after an upload and polls every 2s while any document is still processing.
+  - Documents that belong to a claim link back to it ("Back to claim") and return to it after being deleted; standalone documents behave as before.
+  - Not built yet: claim-wide question answering, and editing a claim's status/assignee.
 - Responses use DTOs (`ClaimResponse`, `ClaimDetailResponse`, `ClaimDocumentResponse`); enums serialise as integers.
 - There are no auth checks, and no endpoints yet to update a claim's status/assignee or delete a claim.
 
