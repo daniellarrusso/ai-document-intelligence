@@ -74,6 +74,58 @@
       }
     </div>
 
+    @if (doc.status === DocumentStatus.Completed) {
+      <div class="mt-6">
+        <h3 class="text-xs uppercase tracking-wide text-slate-500">Ask a question</h3>
+        <form class="mt-2" (submit)="$event.preventDefault(); ask()">
+          <label for="question" class="sr-only">Question about this document</label>
+          <textarea
+            id="question"
+            rows="2"
+            class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+            placeholder="e.g. What are the exclusions for water damage?"
+            [attr.maxlength]="maxQuestionLength"
+            [value]="question()"
+            [disabled]="asking()"
+            (input)="onQuestionInput($event)"
+          ></textarea>
+          <button
+            type="submit"
+            class="mt-2 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+            [disabled]="!canAsk()"
+          >
+            {{ asking() ? 'Searching document...' : 'Ask' }}
+          </button>
+        </form>
+
+        @if (askError()) {
+          <p class="mt-3 text-sm text-red-600" role="alert">{{ askError() }}</p>
+        }
+
+        @if (answer(); as text) {
+          <div class="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3" aria-live="polite">
+            <p class="whitespace-pre-wrap text-sm text-slate-900">{{ text }}</p>
+          </div>
+
+          @if (sources().length > 0) {
+            <details class="mt-3">
+              <summary class="cursor-pointer text-sm text-sky-700 hover:underline">
+                Sources ({{ sources().length }})
+              </summary>
+              <ol class="mt-2 space-y-2">
+                @for (source of sources(); track source.chunkIndex; let i = $index) {
+                  <li class="rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+                    <span class="text-xs text-slate-500">[{{ i + 1 }}] Relevance {{ source.score * 100 | number: '1.0-0' }}%</span>
+                    <p class="mt-1 whitespace-pre-wrap">{{ source.text }}</p>
+                  </li>
+                }
+              </ol>
+            </details>
+          }
+        }
+      </div>
+    }
+
     <div class="mt-6">
       <h3 class="text-xs uppercase tracking-wide text-slate-500">Extracted text</h3>
       @if (doc.extractedText) {

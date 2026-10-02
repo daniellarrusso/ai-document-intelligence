@@ -7,6 +7,7 @@ export enum DocumentStatus {
   Failed = 3,
   ExtractingText = 4,
   GeneratingSummary = 5,
+  IndexingDocument = 6,
 }
 
 const STATUS_LABELS: Record<DocumentStatus, string> = {
@@ -14,6 +15,7 @@ const STATUS_LABELS: Record<DocumentStatus, string> = {
   [DocumentStatus.Processing]: 'Processing document...',
   [DocumentStatus.ExtractingText]: 'Extracting text...',
   [DocumentStatus.GeneratingSummary]: 'Generating summary...',
+  [DocumentStatus.IndexingDocument]: 'Indexing for search...',
   [DocumentStatus.Completed]: 'Complete',
   [DocumentStatus.Failed]: 'Failed',
 };
@@ -28,6 +30,7 @@ export const PIPELINE_STATUSES: DocumentStatus[] = [
   DocumentStatus.Processing,
   DocumentStatus.ExtractingText,
   DocumentStatus.GeneratingSummary,
+  DocumentStatus.IndexingDocument,
   DocumentStatus.Completed,
 ];
 
@@ -41,4 +44,16 @@ export interface DocumentSummary {
   processedAt: string | null;
   extractedText: string | null;
   summary: string | null;
+}
+
+// A retrieved document excerpt that supports an answer. Score is cosine similarity (higher is more relevant).
+export interface AnswerSource {
+  chunkIndex: number;
+  text: string;
+  score: number;
+}
+
+export interface DocumentAnswer {
+  answer: string;
+  sources: AnswerSource[];
 }

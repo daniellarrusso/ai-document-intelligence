@@ -1,7 +1,8 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, DestroyRef, afterNextRender, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
+  AnswerSource,
   DocumentStatus,
   DocumentSummary,
   PIPELINE_STATUSES,
@@ -10,12 +11,13 @@ import {
 import { DocumentService } from '../document-list/document.service';
 
 const POLL_INTERVAL_MS = 2000;
+const MAX_QUESTION_LENGTH = 1000;
 
 export type StepState = 'done' | 'current' | 'pending';
 
 @Component({
   selector: 'app-document-details',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, DecimalPipe, RouterLink],
   templateUrl: './document-details.html',
 })
 export class DocumentDetails {
@@ -32,6 +34,14 @@ export class DocumentDetails {
   protected readonly confirmingDelete = signal(false);
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
+
+  protected readonly maxQuestionLength = MAX_QUESTION_LENGTH;
+  protected readonly question = signal('');
+  protected readonly asking = signal(false);
+  protected readonly answer = signal<string | null>(null);
+  protected readonly sources = signal<AnswerSource[]>([]);
+  protected readonly askError = signal('');
+  protected readonly canAsk = computed(() => this.question().trim().length > 0 && !this.asking());
 
   // Progress stepper: pending while extraction/summarization run, hidden once terminal (Completed/Failed).
   protected readonly steps = computed(() => {
@@ -112,6 +122,39 @@ export class DocumentDetails {
       error: () => {
         this.deleteError.set('Unable to delete the document. Please try again.');
         this.deleting.set(false);
+      },
+    });
+  }
+
+  protected onQuestionInput(event: Event): void {
+    this.question.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  protected ask(): void {
+    const document = this.document();
+    const question = this.question().trim();
+    if (!document || !question || this.asking()) {
+      return;
+    }
+
+    this.asking.set(true);
+    this.askError.set('');
+    this.answer.set(null);
+    this.sources.set([]);
+
+    this.documentService.ask(document.id, question).subscribe({
+      next: (result) => {
+        this.answer.set(result.answer);
+        this.sources.set(result.sources);
+        this.asking.set(false);
+      },
+      error: (err: { status?: number }) => {
+        this.askError.set(
+          err.status === 409
+            ? 'This document has no searchable content, so it cannot be queried.'
+            : 'Unable to get an answer right now. Please try again.',
+        );
+        this.asking.set(false);
       },
     });
   }
