@@ -1,9 +1,12 @@
+using AiDocumentIntelligence.Api.Authorization;
 using AiDocumentIntelligence.Infrastructure;
 using AiDocumentIntelligence.Domain;
 using Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using Microsoft.Identity.Web;
 using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,6 +35,23 @@ builder.Services.AddScoped<ClaimService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
 builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
 builder.Services.AddHostedService<LocalDocumentProcessingWorker>();
+
+// Authentication: Entra ID access tokens. Without the tenant and client ids every request would be rejected,
+// so refuse to start rather than run with a broken or (worse) disabled setup.
+var azureAd = builder.Configuration.GetSection("AzureAd");
+if (string.IsNullOrWhiteSpace(azureAd["TenantId"]) || string.IsNullOrWhiteSpace(azureAd["ClientId"]))
+{
+    throw new InvalidOperationException("Configuration 'AzureAd:TenantId' and 'AzureAd:ClientId' are required.");
+}
+
+builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "AzureAd");
+builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+{
+    // App roles arrive in the "roles" claim; map them so [Authorize(Roles/Policy)] and User.IsInRole work.
+    options.TokenValidationParameters.RoleClaimType = "roles";
+    options.TokenValidationParameters.NameClaimType = "name";
+});
+builder.Services.AddAppAuthorization();
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -68,14 +88,18 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
 }
 
 app.UseHttpsRedirection();
 
 app.UseCors("AllowAngular");
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
+// Makes the entry point visible to WebApplicationFactory in the API tests.
+public partial class Program { }

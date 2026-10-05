@@ -1,9 +1,12 @@
 using AiDocumentIntelligence.Domain;
 using AiDocumentIntelligence.Infrastructure;
+using AiDocumentIntelligence.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = AuthorizationPolicies.CanRead)]
 public class DocumentsController : ControllerBase
 {
     private readonly ILogger<DocumentsController> _logger;
@@ -38,6 +41,7 @@ public class DocumentsController : ControllerBase
         return Ok(document);
     }
 
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
     [HttpPost(Name = "UploadDocument")]
     public async Task<IActionResult> Upload([FromForm] IFormFile file, CancellationToken cancellationToken)
     {
@@ -56,6 +60,7 @@ public class DocumentsController : ControllerBase
         return Ok(document);
     }
 
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
     [HttpDelete("{id}", Name = "DeleteDocument")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

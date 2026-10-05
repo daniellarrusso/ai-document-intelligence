@@ -1,9 +1,12 @@
 using AiDocumentIntelligence.Domain;
 using AiDocumentIntelligence.Infrastructure;
+using AiDocumentIntelligence.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = AuthorizationPolicies.CanRead)]
 public class ClaimsController : ControllerBase
 {
     private const int MaxPageSize = 100;
@@ -17,6 +20,7 @@ public class ClaimsController : ControllerBase
         _documentService = documentService;
     }
 
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
     [HttpPost(Name = "CreateClaim")]
     public async Task<IActionResult> Create([FromBody] CreateClaimRequest request, CancellationToken cancellationToken)
     {
@@ -70,6 +74,7 @@ public class ClaimsController : ControllerBase
         return claim == null ? NotFound() : Ok(ClaimDetailResponse.From(claim));
     }
 
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
     [HttpPost("{id}/documents", Name = "UploadClaimDocument")]
     public async Task<IActionResult> UploadDocument(Guid id, [FromForm] IFormFile file, CancellationToken cancellationToken)
     {
