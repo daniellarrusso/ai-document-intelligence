@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
+import { UserService } from '../auth/user.service';
 import { DocumentStatus, DocumentSummary } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { DocumentDetails } from './document-details';
@@ -18,12 +20,13 @@ const sample: DocumentSummary = {
   summary: 'A brief report about hello world.',
 };
 
-async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>) {
+async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>, canWrite = true) {
   await TestBed.configureTestingModule({
     imports: [DocumentDetails],
     providers: [
       provideRouter([]),
       { provide: DocumentService, useValue: service },
+      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'abc']]) } } },
     ],
   }).compileComponents();
@@ -185,6 +188,14 @@ describe('DocumentDetails', () => {
     await click('[role="dialog"] button', 'Delete');
 
     expect(navigate).toHaveBeenCalledWith('/claims/claim-1');
+  });
+
+  it('does not offer Delete to a read-only user, who can still ask questions', async () => {
+    const { el } = await render({ getDocument: () => of(sample) }, false);
+
+    const labels = Array.from(el.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(labels).not.toContain('Delete');
+    expect(labels).toContain('Ask');
   });
 
   it('asks for confirmation before deleting and does nothing on cancel', async () => {

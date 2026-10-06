@@ -1,7 +1,9 @@
 <div class="space-y-6">
-  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-    <app-create-claim></app-create-claim>
-  </section>
+  @if (user.canWrite()) {
+    <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <app-create-claim></app-create-claim>
+    </section>
+  }
 
   <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
     <app-claim-list></app-claim-list>

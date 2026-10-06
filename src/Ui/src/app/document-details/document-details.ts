@@ -9,6 +9,7 @@ import {
   documentStatusLabel,
 } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
+import { UserService } from '../auth/user.service';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_QUESTION_LENGTH = 1000;
@@ -24,6 +25,7 @@ export class DocumentDetails {
   private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly DocumentStatus = DocumentStatus;

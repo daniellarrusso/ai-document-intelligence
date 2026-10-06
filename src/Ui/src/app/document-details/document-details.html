@@ -10,13 +10,15 @@
   } @else if (document(); as doc) {
     <div class="mb-6 flex items-start justify-between gap-4">
       <h2 class="break-all font-semibold text-slate-900">{{ doc.fileName }}</h2>
-      <button
-        type="button"
-        class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-        (click)="openDeleteConfirm()"
-      >
-        Delete
-      </button>
+      @if (user.canWrite()) {
+        <button
+          type="button"
+          class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+          (click)="openDeleteConfirm()"
+        >
+          Delete
+        </button>
+      }
     </div>
 
     @if (steps().length > 0) {

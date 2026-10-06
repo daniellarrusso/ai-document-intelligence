@@ -1,8 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
+import { UserService } from '../../auth/user.service';
 import { DocumentStatus } from '../../document-list/document.model';
 import { ClaimDetail, ClaimDocument, ClaimStatus } from '../claim.model';
 import { ClaimService } from '../claim.service';
@@ -36,12 +38,13 @@ const detail: ClaimDetail = {
 
 type Service = Partial<Record<'getClaim' | 'uploadDocument', unknown>>;
 
-async function render(service: Service, settle = true) {
+async function render(service: Service, settle = true, canWrite = true) {
   await TestBed.configureTestingModule({
     imports: [ClaimDetails],
     providers: [
       provideRouter([]),
       { provide: ClaimService, useValue: service },
+      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'claim-1']]) } } },
     ],
   }).compileComponents();
@@ -112,6 +115,13 @@ describe('ClaimDetails', () => {
     });
 
     expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to load claim.');
+  });
+
+  it('hides the upload control from a read-only user but still lists documents', async () => {
+    const { el } = await render({ getClaim: () => of(detail) }, true, false);
+
+    expect(el.querySelector('input[type="file"]')).toBeNull();
+    expect(el.querySelector('tbody a')?.textContent?.trim()).toBe('report.pdf');
   });
 
   it('keeps Upload disabled until a file is chosen', async () => {

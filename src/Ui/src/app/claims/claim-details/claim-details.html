@@ -50,28 +50,30 @@
     <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 class="mb-4 font-semibold text-slate-900">Documents</h2>
 
-      <div class="mb-6 flex flex-wrap items-center gap-3">
-        <label for="claim-file" class="sr-only">Choose a document to add to this claim</label>
-        <input
-          #fileInput
-          id="claim-file"
-          type="file"
-          class="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700 hover:file:bg-slate-200"
-          [disabled]="uploading()"
-          (change)="onFileSelected($event)"
-        />
-        <button
-          type="button"
-          class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-          [disabled]="!selectedFile() || uploading()"
-          (click)="upload()"
-        >
-          {{ uploading() ? 'Uploading...' : 'Upload' }}
-        </button>
-      </div>
+      @if (user.canWrite()) {
+        <div class="mb-6 flex flex-wrap items-center gap-3">
+          <label for="claim-file" class="sr-only">Choose a document to add to this claim</label>
+          <input
+            #fileInput
+            id="claim-file"
+            type="file"
+            class="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700 hover:file:bg-slate-200"
+            [disabled]="uploading()"
+            (change)="onFileSelected($event)"
+          />
+          <button
+            type="button"
+            class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+            [disabled]="!selectedFile() || uploading()"
+            (click)="upload()"
+          >
+            {{ uploading() ? 'Uploading...' : 'Upload' }}
+          </button>
+        </div>
 
-      @if (uploadError()) {
-        <p class="mb-4 text-sm text-red-600" role="alert">{{ uploadError() }}</p>
+        @if (uploadError()) {
+          <p class="mb-4 text-sm text-red-600" role="alert">{{ uploadError() }}</p>
+        }
       }
 
       @if (d.documents.length === 0) {

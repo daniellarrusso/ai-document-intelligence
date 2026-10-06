@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { UserService } from '../auth/user.service';
 import { ClaimList } from './claim-list/claim-list';
 import { CreateClaim } from './create-claim/create-claim';
 
@@ -7,4 +8,6 @@ import { CreateClaim } from './create-claim/create-claim';
   imports: [CreateClaim, ClaimList],
   templateUrl: './claims.html',
 })
-export class Claims {}
+export class Claims {
+  protected readonly user = inject(UserService);
+}

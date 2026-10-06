@@ -3,6 +3,7 @@ import { Component, DestroyRef, ElementRef, afterNextRender, inject, signal, vie
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DocumentStatus, documentStatusLabel, isDocumentInProgress } from '../../document-list/document.model';
 import { formatFileSize } from '../../shared/format-file-size';
+import { UserService } from '../../auth/user.service';
 import { ClaimDetail, ClaimStatus, claimStatusLabel } from '../claim.model';
 import { ClaimService } from '../claim.service';
 
@@ -16,6 +17,7 @@ const POLL_INTERVAL_MS = 2000;
 export class ClaimDetails {
   private readonly claimService = inject(ClaimService);
   private readonly route = inject(ActivatedRoute);
+  protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput');
