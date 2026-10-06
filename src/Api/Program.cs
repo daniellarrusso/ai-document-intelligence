@@ -47,6 +47,10 @@ if (string.IsNullOrWhiteSpace(azureAd["TenantId"]) || string.IsNullOrWhiteSpace(
 builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "AzureAd");
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {
+    // Keep claims named as Entra issues them. With the default mapping the "roles" claim is renamed to the long
+    // ClaimTypes.Role URI, so the RoleClaimType below would never match and every user would look role-less.
+    options.MapInboundClaims = false;
+
     // App roles arrive in the "roles" claim; map them so [Authorize(Roles/Policy)] and User.IsInRole work.
     options.TokenValidationParameters.RoleClaimType = "roles";
     options.TokenValidationParameters.NameClaimType = "name";

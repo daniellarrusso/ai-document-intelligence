@@ -14,17 +14,22 @@ namespace AiDocumentIntelligence.Api.Tests;
 // dependencies mocked, so no Postgres, Azurite or Ollama is needed.
 public class ApiFactory : WebApplicationFactory<Program>
 {
+    // By default Entra token validation is replaced with the header-driven test scheme.
+    protected virtual void ConfigureAuthentication(IServiceCollection services)
+    {
+        services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+            options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+            options.DefaultForbidScheme = TestAuthHandler.SchemeName;
+        }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
-            // Replace Entra JWT validation with the header-driven test scheme.
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
-                options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
-                options.DefaultForbidScheme = TestAuthHandler.SchemeName;
-            }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            ConfigureAuthentication(services);
 
             // The background worker would otherwise resolve real services.
             services.RemoveAll<IHostedService>();
