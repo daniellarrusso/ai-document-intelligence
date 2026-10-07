@@ -19,6 +19,8 @@ export class ClaimDetails {
   private readonly route = inject(ActivatedRoute);
   protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
+  // Set after an upload until a refresh succeeds, so a failed refresh is retried even if nothing was processing before.
+  private refreshPending = false;
 
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput');
 
@@ -47,6 +49,7 @@ export class ClaimDetails {
 
     this.claimService.getClaim(id).subscribe({
       next: (detail) => {
+        this.refreshPending = false;
         this.detail.set(detail);
         this.loading.set(false);
         this.schedulePollIfInProgress(detail);
@@ -56,6 +59,9 @@ export class ClaimDetails {
         if (current && err.status !== 404) {
           // A failed background refresh shouldn't replace a page that is already showing; try again shortly.
           this.schedulePollIfInProgress(current);
+          if (this.refreshPending && this.pollTimer === undefined) {
+            this.pollTimer = setTimeout(() => this.load(), POLL_INTERVAL_MS);
+          }
           return;
         }
 
@@ -69,6 +75,7 @@ export class ClaimDetails {
   // Refresh until every document has reached a terminal status (Completed/Failed).
   private schedulePollIfInProgress(detail: ClaimDetail): void {
     clearTimeout(this.pollTimer);
+    this.pollTimer = undefined;
     if (detail.documents.some((d) => isDocumentInProgress(d.status))) {
       this.pollTimer = setTimeout(() => this.load(), POLL_INTERVAL_MS);
     }
@@ -97,6 +104,7 @@ export class ClaimDetails {
           input.nativeElement.value = '';
         }
         this.uploading.set(false);
+        this.refreshPending = true;
         this.load();
       },
       error: () => {

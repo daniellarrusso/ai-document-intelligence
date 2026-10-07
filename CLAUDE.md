@@ -191,7 +191,7 @@ The API uses ASP.NET Core's built-in DI container (configured in `Program.cs`):
   - Documents that belong to a claim link back to it ("Back to claim") and return to it after being deleted; standalone documents behave as before.
   - Not built yet: claim-wide question answering, and editing a claim's status/assignee.
 - Responses use DTOs (`ClaimResponse`, `ClaimDetailResponse`, `ClaimDocumentResponse`); enums serialise as integers.
-- There are no auth checks, and no endpoints yet to update a claim's status/assignee or delete a claim.
+- There are no endpoints yet to update a claim's status/assignee or delete a claim.
 
 ### Authentication and authorisation
 

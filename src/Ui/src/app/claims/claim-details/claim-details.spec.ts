@@ -199,4 +199,31 @@ describe('ClaimDetails', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(getClaim).toHaveBeenCalledTimes(3);
   });
+
+  it('retries a failed refresh after an upload even when no document was processing before', async () => {
+    vi.useFakeTimers();
+    const uploaded = { ...detail, documents: [document, { ...document, id: 'doc-2', fileName: 'new.pdf' }] };
+    const getClaim = vi
+      .fn()
+      .mockReturnValueOnce(of(detail))
+      .mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })))
+      .mockReturnValue(of(uploaded));
+    const uploadDocument = vi.fn(() => of({ ...document, id: 'doc-2' }));
+    const { fixture, el, chooseFile, uploadButton } = await render({ getClaim, uploadDocument }, false);
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(0);
+    chooseFile(new File(['x'], 'a.txt'));
+
+    uploadButton().click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getClaim).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    fixture.detectChanges();
+    expect(getClaim).toHaveBeenCalledTimes(3);
+    expect(el.querySelectorAll('tbody tr').length).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(getClaim).toHaveBeenCalledTimes(3);
+  });
 });

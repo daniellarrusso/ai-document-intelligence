@@ -109,6 +109,14 @@ public class EndpointAuthorizationTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task GetClaims_PageOffsetOverflowsInt_ReturnsBadRequest()
+    {
+        var status = await Send("GET", "/api/claims?pageNumber=2147483647&pageSize=100", user: "r", roles: AppRoles.Reader);
+
+        Assert.Equal(HttpStatusCode.BadRequest, status);
+    }
+
+    [Fact]
     public async Task Me_ReturnsNameAndOnlyKnownRoles()
     {
         using var client = _factory.CreateClient();

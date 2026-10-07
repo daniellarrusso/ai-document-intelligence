@@ -142,7 +142,10 @@ public class ClaimServiceTests
     {
         var sut = CreateSut();
 
-        await Assert.ThrowsAsync<ArgumentException>(() => sut.CreateClaimAsync(CreateRequest(amountClaimed: 10_000_000_000_000_000m)));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => sut.CreateClaimAsync(CreateRequest(amountClaimed: 10_000_000_000_000_000m)));
+
+        Assert.Contains("cannot exceed", ex.Message);
+        Assert.DoesNotContain("greater than zero", ex.Message);
     }
 
     [Fact]

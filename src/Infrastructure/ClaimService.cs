@@ -54,9 +54,13 @@ public class ClaimService
         }
 
         var amount = Math.Round(request.AmountClaimed, Claim.AmountScale, MidpointRounding.AwayFromZero);
-        if (amount <= 0 || amount > MaxAmountClaimed)
+        if (amount <= 0)
         {
             throw new ArgumentException("Amount claimed must be greater than zero.");
+        }
+        if (amount > MaxAmountClaimed)
+        {
+            throw new ArgumentException($"Amount claimed cannot exceed {MaxAmountClaimed:0.00}.");
         }
 
         var claim = new Claim

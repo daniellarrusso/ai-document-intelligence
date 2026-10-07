@@ -1,6 +1,6 @@
 import { PLATFORM_ID } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AccountInfo } from '@azure/msal-browser';
+import { AccountInfo, InteractionRequiredAuthError } from '@azure/msal-browser';
 import { vi } from 'vitest';
 import { environment } from '../../environments/environment';
 import { MSAL_FACTORY } from './auth.config';
@@ -138,13 +138,22 @@ describe('AuthService', () => {
       expect(msal.acquireTokenSilent).toHaveBeenCalledWith({ scopes, account });
     });
 
-    it('falls back to interactive sign-in when silent renewal fails, and abandons the request', async () => {
-      const failure = new Error('interaction_required');
+    it('falls back to interactive sign-in when silent renewal needs interaction, and abandons the request', async () => {
+      const failure = new InteractionRequiredAuthError('interaction_required', 'corr-id');
       const { auth, msal } = await signedIn({ acquireTokenSilent: vi.fn().mockRejectedValue(failure) });
 
       await expect(auth.getAccessToken()).rejects.toBe(failure);
 
       expect(msal.acquireTokenRedirect).toHaveBeenCalledWith(expect.objectContaining({ scopes, account }));
+    });
+
+    it('does not redirect when silent renewal fails for a non-interactive reason', async () => {
+      const failure = new Error('network_error');
+      const { auth, msal } = await signedIn({ acquireTokenSilent: vi.fn().mockRejectedValue(failure) });
+
+      await expect(auth.getAccessToken()).rejects.toBe(failure);
+
+      expect(msal.acquireTokenRedirect).not.toHaveBeenCalled();
     });
 
     it('rejects when nobody is signed in', async () => {

@@ -49,6 +49,12 @@ public class ClaimsController : ControllerBase
             return BadRequest($"pageNumber must be at least 1 and pageSize must be between 1 and {MaxPageSize}.");
         }
 
+        // The repository computes the offset as an int, so refuse pages that would overflow it.
+        if ((long)(pageNumber - 1) * pageSize > int.MaxValue)
+        {
+            return BadRequest("pageNumber is too large for the given pageSize.");
+        }
+
         if (status.HasValue && !Enum.IsDefined(status.Value))
         {
             return BadRequest("status is not a valid claim status.");

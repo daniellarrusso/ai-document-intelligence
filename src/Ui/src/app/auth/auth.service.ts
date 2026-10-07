@@ -1,6 +1,6 @@
 import { isPlatformBrowser } from '@angular/common';
 import { Injectable, PLATFORM_ID, computed, inject, signal } from '@angular/core';
-import { AccountInfo, IPublicClientApplication } from '@azure/msal-browser';
+import { AccountInfo, IPublicClientApplication, InteractionRequiredAuthError } from '@azure/msal-browser';
 import { API_SCOPES, MSAL_FACTORY, buildMsalConfig } from './auth.config';
 
 /**
@@ -70,8 +70,13 @@ export class AuthService {
       const result = await this.msal.acquireTokenSilent({ scopes: API_SCOPES, account });
       return result.accessToken;
     } catch (err) {
-      // Silent renewal can fail for several reasons (expired session, consent needed, blocked iframe);
-      // interactive sign-in resolves all of them. The page navigates away, so the request is abandoned.
+      // Only an interaction-required failure (expired session, consent needed) is fixed by signing in again.
+      // Anything else (network, configuration) would just redirect repeatedly, so let it propagate.
+      if (!(err instanceof InteractionRequiredAuthError)) {
+        throw err;
+      }
+
+      // The page navigates away, so the request is abandoned.
       await this.msal.acquireTokenRedirect({
         scopes: API_SCOPES,
         account,
