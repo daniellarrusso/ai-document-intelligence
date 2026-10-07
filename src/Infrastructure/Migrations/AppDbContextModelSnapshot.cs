@@ -24,6 +24,52 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AmountClaimed")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("AssignedTo")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ClaimantName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("IncidentDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("PolicyNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.ToTable("Claims");
+                });
+
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -33,6 +79,9 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Property<string>("BlobName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("ClaimId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -61,6 +110,8 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClaimId");
 
                     b.ToTable("Documents");
                 });
@@ -98,6 +149,14 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.ToTable("DocumentChunks");
                 });
 
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>
+                {
+                    b.HasOne("AiDocumentIntelligence.Domain.Claim", null)
+                        .WithMany("Documents")
+                        .HasForeignKey("ClaimId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("AiDocumentIntelligence.Infrastructure.DocumentChunk", b =>
                 {
                     b.HasOne("AiDocumentIntelligence.Domain.Document", null)
@@ -105,6 +164,11 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
+                {
+                    b.Navigation("Documents");
                 });
 #pragma warning restore 612, 618
         }

@@ -24,7 +24,7 @@ public class DocumentService
         return await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
     }
 
-    public async Task<Document> SaveDocumentAsync(UploadDocumentRequest file, CancellationToken cancellationToken = default)
+    public async Task<Document> SaveDocumentAsync(UploadDocumentRequest file, Guid? claimId = null, CancellationToken cancellationToken = default)
     {
         var documentId = Guid.NewGuid();
 
@@ -44,7 +44,8 @@ public class DocumentService
             ContentType = file.ContentType,
             FileSize = file.FileSize,
             UploadedAt = DateTime.UtcNow,
-            Status = DocumentStatus.Uploaded
+            Status = DocumentStatus.Uploaded,
+            ClaimId = claimId
         };
 
         await _documentRepository.CreateDocumentAsync(document, cancellationToken);

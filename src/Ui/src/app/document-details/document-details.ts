@@ -9,6 +9,7 @@ import {
   documentStatusLabel,
 } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
+import { UserService } from '../auth/user.service';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_QUESTION_LENGTH = 1000;
@@ -24,6 +25,7 @@ export class DocumentDetails {
   private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly DocumentStatus = DocumentStatus;
@@ -34,6 +36,14 @@ export class DocumentDetails {
   protected readonly confirmingDelete = signal(false);
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
+
+  // Documents that belong to a claim lead back to it rather than to the global document list.
+  protected readonly backLink = computed(() => {
+    const claimId = this.document()?.claimId;
+    return claimId
+      ? { commands: ['/claims', claimId], label: 'Back to claim' }
+      : { commands: ['/'], label: 'Back to documents' };
+  });
 
   protected readonly maxQuestionLength = MAX_QUESTION_LENGTH;
   protected readonly question = signal('');
@@ -118,7 +128,7 @@ export class DocumentDetails {
     this.deleteError.set('');
 
     this.documentService.delete(document.id).subscribe({
-      next: () => void this.router.navigateByUrl('/'),
+      next: () => void this.router.navigateByUrl(document.claimId ? `/claims/${document.claimId}` : '/'),
       error: () => {
         this.deleteError.set('Unable to delete the document. Please try again.');
         this.deleting.set(false);
