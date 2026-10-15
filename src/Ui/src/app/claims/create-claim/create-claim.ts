@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, WritableSignal, computed, inject, signal } from '@angular/core';
-import { CLAIM_LIMITS } from '../claim.model';
+import { Component, WritableSignal, afterNextRender, computed, inject, signal } from '@angular/core';
+import { UserService } from '../../auth/user.service';
+import { CLAIM_LIMITS, Handler } from '../claim.model';
 import { ClaimService } from '../claim.service';
 
 type TextField = 'policyNumber' | 'claimantName' | 'incidentDate' | 'amountClaimed' | 'assignedTo';
@@ -18,6 +19,7 @@ function todayIso(): string {
 })
 export class CreateClaim {
   private readonly claimService = inject(ClaimService);
+  private readonly user = inject(UserService);
 
   protected readonly limits = CLAIM_LIMITS;
   protected readonly today = todayIso();
@@ -26,7 +28,18 @@ export class CreateClaim {
   protected readonly claimantName = signal('');
   protected readonly incidentDate = signal('');
   protected readonly amountClaimed = signal('');
+  /** The chosen handler's id; blank means the creator (the default). */
   protected readonly assignedTo = signal('');
+  protected readonly isPrivate = signal(false);
+
+  private readonly allHandlers = signal<Handler[]>([]);
+  protected readonly handlersError = signal(false);
+
+  /** Other handlers to assign to; the creator is the blank "Me" option, so they are left out of this list. */
+  protected readonly handlers = computed(() => {
+    const me = this.user.user()?.id;
+    return this.allHandlers().filter((handler) => handler.id !== me);
+  });
 
   protected readonly saving = signal(false);
   protected readonly error = signal('');
@@ -51,7 +64,6 @@ export class CreateClaim {
       policyNumber.length <= CLAIM_LIMITS.policyNumber &&
       claimantName.length > 0 &&
       claimantName.length <= CLAIM_LIMITS.name &&
-      this.assignedTo().trim().length <= CLAIM_LIMITS.name &&
       incidentDate !== '' &&
       incidentDate <= this.today &&
       this.amountClaimed().trim() !== '' &&
@@ -60,8 +72,22 @@ export class CreateClaim {
     );
   });
 
+  constructor() {
+    // Browser only (avoids calling the API during SSR).
+    afterNextRender(() => {
+      this.claimService.getHandlers().subscribe({
+        next: (handlers) => this.allHandlers.set(handlers),
+        error: () => this.handlersError.set(true),
+      });
+    });
+  }
+
   protected onInput(field: TextField, event: Event): void {
-    this.fields[field].set((event.target as HTMLInputElement).value);
+    this.fields[field].set((event.target as HTMLInputElement | HTMLSelectElement).value);
+  }
+
+  protected onPrivateChange(event: Event): void {
+    this.isPrivate.set((event.target as HTMLInputElement).checked);
   }
 
   protected submit(): void {
@@ -79,12 +105,14 @@ export class CreateClaim {
         claimantName: this.claimantName().trim(),
         incidentDate: this.incidentDate(),
         amountClaimed: Number(this.amountClaimed()),
-        assignedTo: this.assignedTo().trim() || null,
+        assignedToUserId: this.assignedTo() || null,
+        isPrivate: this.isPrivate(),
       })
       .subscribe({
         next: (claim) => {
           this.created.set(`Created claim ${claim.reference}.`);
           Object.values(this.fields).forEach((field) => field.set(''));
+          this.isPrivate.set(false);
           this.saving.set(false);
         },
         error: (err: HttpErrorResponse) => {

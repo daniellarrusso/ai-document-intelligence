@@ -17,11 +17,27 @@ describe('UserService', () => {
 
     const first = user.ensureLoaded();
     const second = user.ensureLoaded();
-    http.expectOne(meUrl).flush({ name: 'Jane Doe', roles: ['Handler'] });
+    http.expectOne(meUrl).flush({ id: 'u-1', name: 'Jane Doe', roles: ['Handler'] });
     await Promise.all([first, second]);
 
-    expect(user.user()).toEqual({ name: 'Jane Doe', roles: ['Handler'] });
+    expect(user.user()).toEqual({ id: 'u-1', name: 'Jane Doe', roles: ['Handler'] });
     http.verify();
+  });
+
+  it.each([
+    [['Admin'], true],
+    [['Handler'], false],
+    [['Reader'], false],
+    [['Handler', 'Admin'], true],
+    [[], false],
+  ])('isAdmin for roles %j is %s', async (roles, expected) => {
+    const { user, http } = setup();
+
+    const loaded = user.ensureLoaded();
+    http.expectOne(meUrl).flush({ id: 'u', name: 'x', roles });
+    await loaded;
+
+    expect(user.isAdmin()).toBe(expected);
   });
 
   it.each([

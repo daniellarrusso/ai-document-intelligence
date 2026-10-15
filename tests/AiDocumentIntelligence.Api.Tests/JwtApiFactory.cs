@@ -55,6 +55,7 @@ public class JwtApiFactory : ApiFactory
         var claims = new Dictionary<string, object>
         {
             ["name"] = "Jane Doe",
+            ["oid"] = "7f1c1e2a-0b5d-4f0e-9a43-5b1d8d2f7c10",
             ["scp"] = scope,
             ["ver"] = "2.0",
             ["tid"] = TestTenantId,

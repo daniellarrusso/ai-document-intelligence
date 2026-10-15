@@ -15,7 +15,9 @@ const sample: Claim = {
   incidentDate: '2026-09-01',
   amountClaimed: 1500.5,
   status: ClaimStatus.InReview,
-  assignedTo: null,
+  assignedToUserId: null,
+  assignedToName: null,
+  isPrivate: false,
   createdAt: '2026-09-02T10:00:00Z',
 };
 

@@ -85,12 +85,48 @@ public class DocumentRepository : IDocumentRepository
         return document;
     }
 
-    public async Task<List<Document>> GetDocumentsAsync(int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<Document?> GetDocumentForUserAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        var documents = await _context.Documents
+        return await VisibleTo(user).FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+    }
+
+    public async Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    {
+        return await VisibleTo(user)
+            .OrderByDescending(d => d.UploadedAt)
+            .ThenBy(d => d.Id)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
-        return documents;
+    }
+
+    // A document inherits its claim's visibility; standalone documents follow ClaimAccess.CanViewStandaloneDocument.
+    // Keep this in step with that method.
+    private IQueryable<Document> VisibleTo(CurrentUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        var documents = _context.Documents.AsNoTracking();
+        var userId = user.Id;
+        var viewableClaimIds = _context.Claims.Where(ClaimAccess.CanView(user)).Select(c => c.Id);
+
+        if (user.IsAdmin)
+        {
+            return documents;
+        }
+
+        if (user.IsHandler)
+        {
+            return documents.Where(d => d.ClaimId == null
+                ? d.UploadedByUserId == userId
+                : viewableClaimIds.Contains(d.ClaimId.Value));
+        }
+
+        if (user.IsReader)
+        {
+            return documents.Where(d => d.ClaimId == null || viewableClaimIds.Contains(d.ClaimId.Value));
+        }
+
+        return documents.Where(d => false);
     }
 }

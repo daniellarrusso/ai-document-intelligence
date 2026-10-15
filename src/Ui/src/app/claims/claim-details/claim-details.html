@@ -38,7 +38,64 @@
         </div>
         <div>
           <dt class="text-xs uppercase tracking-wide text-slate-500">Assigned to</dt>
-          <dd class="mt-1">{{ d.claim.assignedTo ?? 'Unassigned' }}</dd>
+          @if (user.canWrite()) {
+            <dd class="mt-1 flex flex-wrap items-center gap-2">
+              <label for="claim-assignee" class="sr-only">Assign this claim to</label>
+              <select
+                id="claim-assignee"
+                class="rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+                [disabled]="assigning()"
+                (change)="onAssigneeChange($event)"
+              >
+                @if (!selectedAssignee()) {
+                  <option value="" selected>Unassigned</option>
+                }
+                @for (handler of assigneeOptions(); track handler.id) {
+                  <option [value]="handler.id" [selected]="handler.id === selectedAssignee()">
+                    {{ handler.displayName }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                [disabled]="!canReassign()"
+                (click)="reassign()"
+              >
+                {{ assigning() ? 'Reassigning...' : 'Reassign' }}
+              </button>
+            </dd>
+            @if (handlersError()) {
+              <dd class="mt-1 text-xs text-red-600" role="alert">Unable to load the list of handlers.</dd>
+            }
+            @if (assignError()) {
+              <dd class="mt-1 text-xs text-red-600" role="alert">{{ assignError() }}</dd>
+            }
+          } @else {
+            <dd class="mt-1">{{ d.claim.assignedToName ?? 'Unassigned' }}</dd>
+          }
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500">Visibility</dt>
+          @if (user.canWrite()) {
+            <dd class="mt-1">
+              <label class="flex items-center gap-2">
+                <input
+                  id="claim-private"
+                  type="checkbox"
+                  class="rounded border-slate-300"
+                  [checked]="d.claim.isPrivate"
+                  (change)="togglePrivate($event)"
+                />
+                Private (hidden from readers)
+              </label>
+            </dd>
+            @if (privacyError()) {
+              <dd class="mt-1 text-xs text-red-600" role="alert">{{ privacyError() }}</dd>
+            }
+          } @else {
+            <dd class="mt-1">{{ d.claim.isPrivate ? 'Private' : 'Visible to readers' }}</dd>
+          }
         </div>
         <div>
           <dt class="text-xs uppercase tracking-wide text-slate-500">Created</dt>

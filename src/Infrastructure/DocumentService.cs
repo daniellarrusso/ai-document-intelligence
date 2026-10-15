@@ -1,31 +1,46 @@
 using AiDocumentIntelligence.Domain;
+using AiDocumentIntelligence.Infrastructure;
 // Now create a service class to save Document in DocumentRepository and then call BlobDocumentStorage to upload to blob storage
 
 public class DocumentService
 {
     private readonly IDocumentRepository _documentRepository;
+    private readonly IClaimRepository _claimRepository;
     private readonly IDocumentStorage _documentStorage;
     private readonly IDocumentProcessingQueue _processingQueue;
+    private readonly UserService _userService;
 
-    public DocumentService(IDocumentRepository documentRepository, IDocumentStorage documentStorage, IDocumentProcessingQueue processingQueue)
+    public DocumentService(
+        IDocumentRepository documentRepository,
+        IClaimRepository claimRepository,
+        IDocumentStorage documentStorage,
+        IDocumentProcessingQueue processingQueue,
+        UserService userService)
     {
         _documentRepository = documentRepository;
+        _claimRepository = claimRepository;
         _documentStorage = documentStorage;
         _processingQueue = processingQueue;
+        _userService = userService;
     }
 
-    public async Task<List<Document>> GetDocumentsAsync(int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
     {
-        return await _documentRepository.GetDocumentsAsync(pageNumber, pageSize, cancellationToken);
+        return await _documentRepository.GetDocumentsAsync(user, pageNumber, pageSize, cancellationToken);
     }
 
-    public async Task<Document?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    // Null if the document doesn't exist or the user may not view it.
+    public async Task<Document?> GetDocumentByIdAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        return await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
+        return await _documentRepository.GetDocumentForUserAsync(user, id, cancellationToken);
     }
 
-    public async Task<Document> SaveDocumentAsync(UploadDocumentRequest file, Guid? claimId = null, CancellationToken cancellationToken = default)
+    // The caller is recorded as the uploader. The controller is responsible for checking the user may act
+    // on claimId (ClaimService.AuthorizeActionAsync) before attaching a document to it.
+    public async Task<Document> SaveDocumentAsync(UploadDocumentRequest file, CurrentUser uploader, Guid? claimId = null, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(uploader);
+
         var documentId = Guid.NewGuid();
 
         var blobName = $"documents/{documentId}/original/{file.FileName}";
@@ -45,9 +60,12 @@ public class DocumentService
             FileSize = file.FileSize,
             UploadedAt = DateTime.UtcNow,
             Status = DocumentStatus.Uploaded,
-            ClaimId = claimId
+            ClaimId = claimId,
+            UploadedByUserId = uploader.Id
         };
 
+        // The foreign key needs the user row to exist, even if they never called /api/me.
+        await _userService.RecordSignInAsync(uploader, cancellationToken);
         await _documentRepository.CreateDocumentAsync(document, cancellationToken);
 
         // Queued for processing: mark Processing before enqueueing so the worker's result can't be overwritten.
@@ -58,19 +76,34 @@ public class DocumentService
         return document;
     }
 
-    // Returns false if the document does not exist. The blob is removed first so a storage failure
-    // leaves the record in place and the delete can be retried.
-    public async Task<bool> DeleteDocumentAsync(Guid id, CancellationToken cancellationToken = default)
+    // NotFound if the document doesn't exist or the user may not view it. The blob is removed first so a
+    // storage failure leaves the record in place and the delete can be retried.
+    public async Task<AccessOutcome> DeleteDocumentAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        var document = await _documentRepository.GetDocumentByIdAsync(id, cancellationToken);
+        var document = await _documentRepository.GetDocumentForUserAsync(user, id, cancellationToken);
         if (document == null)
         {
-            return false;
+            return AccessOutcome.NotFound;
+        }
+
+        var canAct = document.ClaimId is { } claimId
+            ? await CanActOnClaimAsync(user, claimId, cancellationToken)
+            : ClaimAccess.CanActOnStandaloneDocument(user, document);
+        if (!canAct)
+        {
+            return AccessOutcome.Forbidden;
         }
 
         await _documentStorage.DeleteAsync(document.BlobName, cancellationToken);
         await _documentRepository.DeleteDocumentAsync(id, cancellationToken);
 
-        return true;
+        return AccessOutcome.Allowed;
+    }
+
+    private async Task<bool> CanActOnClaimAsync(CurrentUser user, Guid claimId, CancellationToken cancellationToken)
+    {
+        var claim = await _claimRepository.GetClaimAsync(user, claimId, cancellationToken);
+
+        return claim != null && ClaimAccess.CanAct(user, claim);
     }
 }

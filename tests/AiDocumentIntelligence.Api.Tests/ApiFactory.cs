@@ -14,6 +14,13 @@ namespace AiDocumentIntelligence.Api.Tests;
 // dependencies mocked, so no Postgres, Azurite or Ollama is needed.
 public class ApiFactory : WebApplicationFactory<Program>
 {
+    // The mocked data layer, exposed so tests can see who the API asked on behalf of.
+    public Mock<IClaimRepository> Claims { get; } = new();
+
+    public Mock<IDocumentRepository> Documents { get; } = new();
+
+    public Mock<IUserRepository> Users { get; } = new();
+
     // By default Entra token validation is replaced with the header-driven test scheme.
     protected virtual void ConfigureAuthentication(IServiceCollection services)
     {
@@ -34,13 +41,15 @@ public class ApiFactory : WebApplicationFactory<Program>
             // The background worker would otherwise resolve real services.
             services.RemoveAll<IHostedService>();
 
-            var claims = new Mock<IClaimRepository>();
-            claims.Setup(r => r.GetClaimsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<ClaimStatus?>(), It.IsAny<CancellationToken>()))
+            var claims = Claims;
+            claims.Setup(r => r.GetClaimsAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<ClaimStatus?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             services.Replace(ServiceDescriptor.Scoped(_ => claims.Object));
 
-            var documents = new Mock<IDocumentRepository>();
-            documents.Setup(r => r.GetDocumentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            services.Replace(ServiceDescriptor.Scoped(_ => Users.Object));
+
+            var documents = Documents;
+            documents.Setup(r => r.GetDocumentsAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             services.Replace(ServiceDescriptor.Scoped(_ => documents.Object));
 

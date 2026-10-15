@@ -61,7 +61,7 @@
             <td class="py-3 pr-4">{{ claim.incidentDate | date: 'mediumDate' }}</td>
             <td class="py-3 pr-4 text-right">{{ claim.amountClaimed | number: '1.2-2' }}</td>
             <td class="py-3 pr-4">{{ statusLabel(claim.status) }}</td>
-            <td class="py-3 pr-4">{{ claim.assignedTo ?? 'Unassigned' }}</td>
+            <td class="py-3 pr-4">{{ claim.assignedToName ?? 'Unassigned' }}</td>
             <td class="py-3">{{ claim.createdAt | date: 'medium' }}</td>
           </tr>
         }

@@ -21,9 +21,9 @@ public class ClaimRepository : IClaimRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<List<Claim>> GetClaimsAsync(int pageNumber, int pageSize, string? search = null, ClaimStatus? status = null, CancellationToken cancellationToken = default)
+    public async Task<List<Claim>> GetClaimsAsync(CurrentUser user, int pageNumber, int pageSize, string? search = null, ClaimStatus? status = null, CancellationToken cancellationToken = default)
     {
-        var query = _context.Claims.AsNoTracking();
+        var query = _context.Claims.AsNoTracking().Include(c => c.AssignedToUser).Where(ClaimAccess.CanView(user));
 
         if (!string.IsNullOrEmpty(search))
         {
@@ -51,11 +51,12 @@ public class ClaimRepository : IClaimRepository
     private static string EscapeLikePattern(string value) =>
         value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
-    public async Task<Claim?> GetClaimWithDocumentsAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Claim?> GetClaimWithDocumentsAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
         // Projected rather than Include()d so each document's potentially large ExtractedText isn't loaded.
         return await _context.Claims
             .AsNoTracking()
+            .Where(ClaimAccess.CanView(user))
             .Where(c => c.Id == id)
             .Select(c => new Claim
             {
@@ -66,7 +67,12 @@ public class ClaimRepository : IClaimRepository
                 IncidentDate = c.IncidentDate,
                 AmountClaimed = c.AmountClaimed,
                 Status = c.Status,
-                AssignedTo = c.AssignedTo,
+                AssignedToUserId = c.AssignedToUserId,
+                AssignedToUser = c.AssignedToUser == null
+                    ? null
+                    : new AppUser { Id = c.AssignedToUser.Id, DisplayName = c.AssignedToUser.DisplayName },
+                CreatedByUserId = c.CreatedByUserId,
+                IsPrivate = c.IsPrivate,
                 CreatedAt = c.CreatedAt,
                 Documents = c.Documents
                     .OrderByDescending(d => d.UploadedAt)
@@ -87,8 +93,25 @@ public class ClaimRepository : IClaimRepository
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<bool> ClaimExistsAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Claim?> GetClaimAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.Claims.AnyAsync(c => c.Id == id, cancellationToken);
+        return await _context.Claims
+            .AsNoTracking()
+            .Where(ClaimAccess.CanView(user))
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+    }
+
+    public async Task UpdateAssigneeAsync(Guid claimId, Guid assigneeId, CancellationToken cancellationToken = default)
+    {
+        await _context.Claims
+            .Where(c => c.Id == claimId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AssignedToUserId, assigneeId), cancellationToken);
+    }
+
+    public async Task UpdatePrivacyAsync(Guid claimId, bool isPrivate, CancellationToken cancellationToken = default)
+    {
+        await _context.Claims
+            .Where(c => c.Id == claimId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsPrivate, isPrivate), cancellationToken);
     }
 }

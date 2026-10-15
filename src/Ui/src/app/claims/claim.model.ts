@@ -44,8 +44,17 @@ export interface Claim {
   incidentDate: string;
   amountClaimed: number;
   status: ClaimStatus;
-  assignedTo: string | null;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  /** Private claims are hidden from Readers. */
+  isPrivate: boolean;
   createdAt: string;
+}
+
+/** A person a claim can be assigned to. */
+export interface Handler {
+  id: string;
+  displayName: string;
 }
 
 export interface CreateClaimRequest {
@@ -54,7 +63,9 @@ export interface CreateClaimRequest {
   /** Date only, `yyyy-MM-dd`. */
   incidentDate: string;
   amountClaimed: number;
-  assignedTo: string | null;
+  /** Omit (null) to assign the claim to the creator. */
+  assignedToUserId: string | null;
+  isPrivate: boolean;
 }
 
 /** A document as listed under a claim: metadata and summary, without the extracted text. */

@@ -22,7 +22,14 @@ public class Claim
 
     public ClaimStatus Status { get; set; }
 
-    public string? AssignedTo { get; set; }
+    public Guid? AssignedToUserId { get; set; }
+
+    public AppUser? AssignedToUser { get; set; }
+
+    public Guid? CreatedByUserId { get; set; }
+
+    // Private claims are hidden from Readers; only the assigned Handler and Admins can see them.
+    public bool IsPrivate { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

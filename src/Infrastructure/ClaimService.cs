@@ -10,16 +10,20 @@ public class ClaimService
     public const int MaxSearchLength = 100;
 
     private readonly IClaimRepository _claimRepository;
+    private readonly UserService _userService;
 
-    public ClaimService(IClaimRepository claimRepository)
+    public ClaimService(IClaimRepository claimRepository, UserService userService)
     {
         _claimRepository = claimRepository;
+        _userService = userService;
     }
 
-    // Throws ArgumentException if the request is invalid. The reference is generated, new claims start Open.
-    public async Task<Claim> CreateClaimAsync(CreateClaimRequest request, CancellationToken cancellationToken = default)
+    // Throws ArgumentException if the request is invalid. The reference is generated, new claims start Open,
+    // and the creator becomes the assignee so a Handler can see (and work) the claim they just opened.
+    public async Task<Claim> CreateClaimAsync(CreateClaimRequest request, CurrentUser creator, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(creator);
 
         var policyNumber = request.PolicyNumber?.Trim();
         if (string.IsNullOrEmpty(policyNumber))
@@ -41,10 +45,13 @@ public class ClaimService
             throw new ArgumentException($"Claimant name cannot exceed {Claim.MaxNameLength} characters.");
         }
 
-        var assignedTo = string.IsNullOrWhiteSpace(request.AssignedTo) ? null : request.AssignedTo.Trim();
-        if (assignedTo?.Length > Claim.MaxNameLength)
+        // The creator is the default assignee. Assigning to someone else needs a known Handler: the picker
+        // only offers those, so anything else is a stale or hand-crafted request.
+        var assigneeId = creator.Id;
+        if (request.AssignedToUserId is { } requestedAssignee && requestedAssignee != creator.Id)
         {
-            throw new ArgumentException($"Assigned to cannot exceed {Claim.MaxNameLength} characters.");
+            await RequireHandlerAsync(requestedAssignee, cancellationToken);
+            assigneeId = requestedAssignee;
         }
 
         var now = DateTime.UtcNow;
@@ -72,17 +79,21 @@ public class ClaimService
             IncidentDate = request.IncidentDate,
             AmountClaimed = amount,
             Status = ClaimStatus.Open,
-            AssignedTo = assignedTo,
+            AssignedToUserId = assigneeId,
+            CreatedByUserId = creator.Id,
+            IsPrivate = request.IsPrivate,
             CreatedAt = now
         };
 
+        // The foreign keys need the user row to exist, even if they never called /api/me.
+        await _userService.RecordSignInAsync(creator, cancellationToken);
         await _claimRepository.CreateClaimAsync(claim, cancellationToken);
 
         return claim;
     }
 
     // Throws ArgumentException if the search text is too long. Blank search text means no text filter.
-    public Task<List<Claim>> GetClaimsAsync(int pageNumber = 1, int pageSize = 10, string? search = null, ClaimStatus? status = null, CancellationToken cancellationToken = default)
+    public Task<List<Claim>> GetClaimsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, string? search = null, ClaimStatus? status = null, CancellationToken cancellationToken = default)
     {
         var trimmedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         if (trimmedSearch?.Length > MaxSearchLength)
@@ -90,16 +101,60 @@ public class ClaimService
             throw new ArgumentException($"Search text cannot exceed {MaxSearchLength} characters.");
         }
 
-        return _claimRepository.GetClaimsAsync(pageNumber, pageSize, trimmedSearch, status, cancellationToken);
+        return _claimRepository.GetClaimsAsync(user, pageNumber, pageSize, trimmedSearch, status, cancellationToken);
     }
 
-    public Task<Claim?> GetClaimWithDocumentsAsync(Guid id, CancellationToken cancellationToken = default)
+    public Task<Claim?> GetClaimWithDocumentsAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        return _claimRepository.GetClaimWithDocumentsAsync(id, cancellationToken);
+        return _claimRepository.GetClaimWithDocumentsAsync(user, id, cancellationToken);
     }
 
-    public Task<bool> ClaimExistsAsync(Guid id, CancellationToken cancellationToken = default)
+    // NotFound when the claim doesn't exist or the user may not view it; Forbidden when they can view it but not act on it.
+    public async Task<AccessOutcome> AuthorizeActionAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
     {
-        return _claimRepository.ClaimExistsAsync(id, cancellationToken);
+        var claim = await _claimRepository.GetClaimAsync(user, id, cancellationToken);
+        if (claim == null)
+        {
+            return AccessOutcome.NotFound;
+        }
+
+        return ClaimAccess.CanAct(user, claim) ? AccessOutcome.Allowed : AccessOutcome.Forbidden;
+    }
+
+    // Reassigns the claim to a Handler. NotFound/Forbidden as for AuthorizeActionAsync. Throws ArgumentException
+    // if the assignee is not a known Handler. Afterwards the previous Handler can no longer see the claim.
+    public async Task<AccessOutcome> AssignClaimAsync(CurrentUser user, Guid claimId, Guid assigneeId, CancellationToken cancellationToken = default)
+    {
+        var outcome = await AuthorizeActionAsync(user, claimId, cancellationToken);
+        if (outcome != AccessOutcome.Allowed)
+        {
+            return outcome;
+        }
+
+        await RequireHandlerAsync(assigneeId, cancellationToken);
+        await _claimRepository.UpdateAssigneeAsync(claimId, assigneeId, cancellationToken);
+
+        return AccessOutcome.Allowed;
+    }
+
+    public async Task<AccessOutcome> SetPrivacyAsync(CurrentUser user, Guid claimId, bool isPrivate, CancellationToken cancellationToken = default)
+    {
+        var outcome = await AuthorizeActionAsync(user, claimId, cancellationToken);
+        if (outcome != AccessOutcome.Allowed)
+        {
+            return outcome;
+        }
+
+        await _claimRepository.UpdatePrivacyAsync(claimId, isPrivate, cancellationToken);
+
+        return AccessOutcome.Allowed;
+    }
+
+    private async Task RequireHandlerAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (await _userService.FindHandlerAsync(userId, cancellationToken) == null)
+        {
+            throw new ArgumentException("The assignee must be a handler.");
+        }
     }
 }

@@ -77,7 +77,7 @@ describe('App', () => {
   it('shows the signed-in user with their roles and a sign-out button', async () => {
     const { el } = await render({
       account: { username: 'jane@contoso.com' },
-      user: { name: 'Jane Doe', roles: ['Handler', 'Reader'] },
+      user: { id: 'u-1', name: 'Jane Doe', roles: ['Handler', 'Reader'] },
     });
 
     const header = el.querySelector('header')!.textContent;
@@ -96,7 +96,7 @@ describe('App', () => {
   it('forgets the user and signs out when Sign out is clicked', async () => {
     const { auth, userService, button } = await render({
       account: { username: 'jane@contoso.com' },
-      user: { name: 'Jane', roles: ['Reader'] },
+      user: { id: 'u-2', name: 'Jane', roles: ['Reader'] },
     });
 
     button('Sign out')!.click();
@@ -132,7 +132,7 @@ describe('App', () => {
   it('shows a dismissible permission notice above the page', async () => {
     const { fixture, el, userService, button } = await render({
       account: { username: 'x@contoso.com' },
-      user: { name: 'Rita', roles: ['Reader'] },
+      user: { id: 'u-3', name: 'Rita', roles: ['Reader'] },
       forbidden: true,
     });
     expect(el.querySelector('[role="alert"]')?.textContent).toContain("You don't have permission");
