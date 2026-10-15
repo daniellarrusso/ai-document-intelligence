@@ -14,6 +14,21 @@ Entra *app roles* on the API registration; values are case-sensitive and defined
 - `Handler`: Reader, plus create claims, upload documents, delete documents.
 - `Admin`: everything (nothing is admin-only yet).
 
+## Per-claim access (who sees and acts on what)
+The roles above are the coarse gate; `Domain/ClaimAccess.cs` is the single definition of per-claim access. The user's **highest** role wins (Admin > Handler > Reader):
+
+| Role | Sees | Acts on (upload, delete document) |
+|---|---|---|
+| Admin | every claim and document | everything |
+| Handler | only claims assigned to them, and standalone documents they uploaded | only those |
+| Reader | every claim that is not `IsPrivate`, and standalone documents | nothing |
+
+- A claim or document the caller may not view is a **404**, not 403, so private claims don't reveal their existence. 403 is only for "can view, may not act".
+- Filtering happens in the repository query (`ClaimAccess.CanView` expression, `DocumentRepository.VisibleTo`), so paging and search are correct. Keep the expression and the in-memory checks in step (tests assert it).
+- `IDocumentRepository.GetDocumentByIdAsync` is **unfiltered** and only for the processing worker; request handling uses `GetDocumentForUserAsync`.
+- Controllers get the caller from `User.GetCurrentUser()` (needs the `oid` claim) and return 403 if it is missing, so a token without an object id fails closed.
+- `AppUser.Id` is the Entra object id; users are recorded on `/api/me` and again when they create a claim or upload.
+
 ## API
 `src/Api/Authorization/AuthorizationPolicies.cs`, `Program.cs`:
 
@@ -52,4 +67,4 @@ Entra *app roles* on the API registration; values are case-sensitive and defined
 - If sign-in fails, the UI shows the error and a "Try again" button instead of redirecting again, so a misconfiguration cannot loop.
 
 ## Not built yet
-Per-claim ownership (everyone with a role sees all claims), recording who created/uploaded things, mapping `AssignedTo` to Entra identities.
+Auto-matching uploaded documents to claims. Handler membership is a snapshot taken at sign-in (`AppUser.IsHandler`), so a user removed from the Handler role stays assignable until they next sign in.

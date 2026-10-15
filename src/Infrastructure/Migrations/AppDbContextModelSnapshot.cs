@@ -38,6 +38,9 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)");
 
+                    b.Property<bool>("IsHandler")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -55,10 +58,6 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Property<decimal>("AmountClaimed")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("AssignedTo")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uuid");
@@ -191,7 +190,7 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
 
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
                 {
-                    b.HasOne("AiDocumentIntelligence.Domain.AppUser", null)
+                    b.HasOne("AiDocumentIntelligence.Domain.AppUser", "AssignedToUser")
                         .WithMany()
                         .HasForeignKey("AssignedToUserId")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -200,6 +199,8 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("AssignedToUser");
                 });
 
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>

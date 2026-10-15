@@ -24,9 +24,15 @@ public class ClaimsController : ControllerBase
     [HttpPost(Name = "CreateClaim")]
     public async Task<IActionResult> Create([FromBody] CreateClaimRequest request, CancellationToken cancellationToken)
     {
+        // A token without an object id can't be recorded as the claim's owner, so fail closed.
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
         try
         {
-            var claim = await _claimService.CreateClaimAsync(request, cancellationToken);
+            var claim = await _claimService.CreateClaimAsync(request, user, cancellationToken);
 
             return CreatedAtRoute("GetClaimById", new { id = claim.Id }, ClaimResponse.From(claim));
         }
@@ -44,6 +50,11 @@ public class ClaimsController : ControllerBase
         [FromQuery] string? q = null,
         [FromQuery] ClaimStatus? status = null)
     {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
         if (pageNumber < 1 || pageSize < 1 || pageSize > MaxPageSize)
         {
             return BadRequest($"pageNumber must be at least 1 and pageSize must be between 1 and {MaxPageSize}.");
@@ -62,7 +73,7 @@ public class ClaimsController : ControllerBase
 
         try
         {
-            var claims = await _claimService.GetClaimsAsync(pageNumber, pageSize, q, status, cancellationToken);
+            var claims = await _claimService.GetClaimsAsync(user, pageNumber, pageSize, q, status, cancellationToken);
 
             return Ok(claims.Select(ClaimResponse.From));
         }
@@ -75,9 +86,61 @@ public class ClaimsController : ControllerBase
     [HttpGet("{id}", Name = "GetClaimById")]
     public async Task<IActionResult> GetClaimById(Guid id, CancellationToken cancellationToken)
     {
-        var claim = await _claimService.GetClaimWithDocumentsAsync(id, cancellationToken);
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var claim = await _claimService.GetClaimWithDocumentsAsync(user, id, cancellationToken);
 
         return claim == null ? NotFound() : Ok(ClaimDetailResponse.From(claim));
+    }
+
+    // Hands the claim to another handler. 204 rather than the claim: the previous handler can no longer view it.
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [HttpPut("{id}/assignee", Name = "AssignClaim")]
+    public async Task<IActionResult> Assign(Guid id, [FromBody] AssignClaimRequest request, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        if (request.UserId == Guid.Empty)
+        {
+            return BadRequest("userId is required.");
+        }
+
+        try
+        {
+            return await _claimService.AssignClaimAsync(user, id, request.UserId, cancellationToken) switch
+            {
+                AccessOutcome.Allowed => NoContent(),
+                AccessOutcome.Forbidden => Forbid(),
+                _ => NotFound()
+            };
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [HttpPut("{id}/privacy", Name = "SetClaimPrivacy")]
+    public async Task<IActionResult> SetPrivacy(Guid id, [FromBody] SetClaimPrivacyRequest request, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        return await _claimService.SetPrivacyAsync(user, id, request.IsPrivate, cancellationToken) switch
+        {
+            AccessOutcome.Allowed => NoContent(),
+            AccessOutcome.Forbidden => Forbid(),
+            _ => NotFound()
+        };
     }
 
     [Authorize(Policy = AuthorizationPolicies.CanWrite)]
@@ -89,9 +152,19 @@ public class ClaimsController : ControllerBase
             return BadRequest("File cannot be null or empty.");
         }
 
-        if (!await _claimService.ClaimExistsAsync(id, cancellationToken))
+        if (User.GetCurrentUser() is not { } user)
         {
-            return NotFound();
+            return Forbid();
+        }
+
+        // 404 when the claim is missing or not visible to the caller (so its existence isn't revealed), 403
+        // when they can see it but may not act on it.
+        switch (await _claimService.AuthorizeActionAsync(user, id, cancellationToken))
+        {
+            case AccessOutcome.NotFound:
+                return NotFound();
+            case AccessOutcome.Forbidden:
+                return Forbid();
         }
 
         await using var stream = file.OpenReadStream();
@@ -99,11 +172,15 @@ public class ClaimsController : ControllerBase
             stream,
             file.FileName,
             file.ContentType,
-            file.Length), id, cancellationToken);
+            file.Length), user, id, cancellationToken);
 
         return Ok(ClaimDocumentResponse.From(document));
     }
 }
+
+public record AssignClaimRequest(Guid UserId);
+
+public record SetClaimPrivacyRequest(bool IsPrivate);
 
 public record ClaimResponse(
     Guid Id,
@@ -113,7 +190,9 @@ public record ClaimResponse(
     DateOnly IncidentDate,
     decimal AmountClaimed,
     ClaimStatus Status,
-    string? AssignedTo,
+    Guid? AssignedToUserId,
+    string? AssignedToName,
+    bool IsPrivate,
     DateTime CreatedAt)
 {
     public static ClaimResponse From(Claim claim) => new(
@@ -124,7 +203,9 @@ public record ClaimResponse(
         claim.IncidentDate,
         claim.AmountClaimed,
         claim.Status,
-        claim.AssignedTo,
+        claim.AssignedToUserId,
+        claim.AssignedToUser?.DisplayName,
+        claim.IsPrivate,
         claim.CreatedAt);
 }
 

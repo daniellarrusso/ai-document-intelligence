@@ -21,7 +21,14 @@ public class UserService
             Id = user.Id,
             DisplayName = user.DisplayName,
             Email = user.Email,
+            IsHandler = user.IsHandler,
             LastSeenAt = DateTime.UtcNow
         }, cancellationToken);
     }
+
+    public Task<List<AppUser>> GetHandlersAsync(CancellationToken cancellationToken = default) =>
+        _userRepository.GetHandlersAsync(cancellationToken);
+
+    public Task<AppUser?> FindHandlerAsync(Guid id, CancellationToken cancellationToken = default) =>
+        _userRepository.FindHandlerAsync(id, cancellationToken);
 }

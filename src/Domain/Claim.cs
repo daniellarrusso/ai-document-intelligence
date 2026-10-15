@@ -22,10 +22,9 @@ public class Claim
 
     public ClaimStatus Status { get; set; }
 
-    // Legacy free-text assignee, superseded by AssignedToUserId; removed once the assignment endpoints use users.
-    public string? AssignedTo { get; set; }
-
     public Guid? AssignedToUserId { get; set; }
+
+    public AppUser? AssignedToUser { get; set; }
 
     public Guid? CreatedByUserId { get; set; }
 

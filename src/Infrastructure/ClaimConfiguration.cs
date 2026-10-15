@@ -13,7 +13,6 @@ public class ClaimConfiguration : IEntityTypeConfiguration<Claim>
         builder.Property(c => c.Reference).IsRequired().HasMaxLength(Claim.MaxReferenceLength);
         builder.Property(c => c.PolicyNumber).IsRequired().HasMaxLength(Claim.MaxPolicyNumberLength);
         builder.Property(c => c.ClaimantName).IsRequired().HasMaxLength(Claim.MaxNameLength);
-        builder.Property(c => c.AssignedTo).HasMaxLength(Claim.MaxNameLength);
         builder.Property(c => c.AmountClaimed).HasPrecision(Claim.AmountPrecision, Claim.AmountScale);
 
         builder.Property(c => c.IsPrivate).HasDefaultValue(false);
@@ -22,7 +21,7 @@ public class ClaimConfiguration : IEntityTypeConfiguration<Claim>
         builder.HasIndex(c => c.AssignedToUserId);
 
         // SetNull: removing a user must not delete or block their claims.
-        builder.HasOne<AppUser>()
+        builder.HasOne(c => c.AssignedToUser)
             .WithMany()
             .HasForeignKey(c => c.AssignedToUserId)
             .OnDelete(DeleteBehavior.SetNull);

@@ -35,4 +35,17 @@ public class UserServiceTests
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => sut.RecordSignInAsync(null!));
     }
+
+    [Theory]
+    [InlineData(AppRoles.Handler, true)]
+    [InlineData(AppRoles.Admin, false)]
+    [InlineData(AppRoles.Reader, false)]
+    public async Task RecordSignInAsync_FlagsOnlyHandlers(string role, bool expectedIsHandler)
+    {
+        var sut = new UserService(_repositoryMock.Object);
+
+        await sut.RecordSignInAsync(new CurrentUser(Guid.NewGuid(), "Someone", null, [role]));
+
+        _repositoryMock.Verify(r => r.UpsertAsync(It.Is<AppUser>(u => u.IsHandler == expectedIsHandler), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

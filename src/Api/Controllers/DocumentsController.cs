@@ -21,18 +21,26 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet(Name = "GetDocuments")]
-    public IActionResult Get()
+    public async Task<IActionResult> Get(CancellationToken cancellationToken)
     {
-        // Implement logic to retrieve a document from database
-        var documents = _documentService.GetDocumentsAsync().Result;
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var documents = await _documentService.GetDocumentsAsync(user, cancellationToken: cancellationToken);
         return Ok(documents);
     }
 
     [HttpGet("{id}", Name = "GetDocumentById")]
-    public IActionResult GetDocumentById(Guid id)
+    public async Task<IActionResult> GetDocumentById(Guid id, CancellationToken cancellationToken)
     {
-        // Implement logic to retrieve a document from database
-        var document = _documentService.GetDocumentByIdAsync(id).Result;
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var document = await _documentService.GetDocumentByIdAsync(user, id, cancellationToken);
         if (document == null)
         {
             return NotFound();
@@ -50,12 +58,17 @@ public class DocumentsController : ControllerBase
             return BadRequest("File cannot be null or empty.");
         }
 
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
         await using var stream = file.OpenReadStream();
         var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
             stream,
             file.FileName,
             file.ContentType,
-            file.Length), cancellationToken: cancellationToken);
+            file.Length), user, cancellationToken: cancellationToken);
 
         return Ok(document);
     }
@@ -64,14 +77,27 @@ public class DocumentsController : ControllerBase
     [HttpDelete("{id}", Name = "DeleteDocument")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var deleted = await _documentService.DeleteDocumentAsync(id, cancellationToken);
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
 
-        return deleted ? NoContent() : NotFound();
+        return await _documentService.DeleteDocumentAsync(user, id, cancellationToken) switch
+        {
+            AccessOutcome.Allowed => NoContent(),
+            AccessOutcome.Forbidden => Forbid(),
+            _ => NotFound()
+        };
     }
 
     [HttpPost("{id}/ask", Name = "AskDocument")]
     public async Task<IActionResult> Ask(Guid id, [FromBody] AskDocumentRequest request, CancellationToken cancellationToken)
     {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
         var question = request.Question?.Trim();
         if (string.IsNullOrEmpty(question))
         {
@@ -83,7 +109,7 @@ public class DocumentsController : ControllerBase
             return BadRequest($"Question cannot exceed {DocumentQuestionAnswerer.MaxQuestionLength} characters.");
         }
 
-        var document = await _documentService.GetDocumentByIdAsync(id, cancellationToken);
+        var document = await _documentService.GetDocumentByIdAsync(user, id, cancellationToken);
         if (document == null)
         {
             return NotFound();

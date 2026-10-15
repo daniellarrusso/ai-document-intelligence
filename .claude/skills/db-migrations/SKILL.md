@@ -28,6 +28,7 @@ Migrations live in `src/Infrastructure/Migrations/`. Review the generated migrat
 - `20261002153227_AddClaims.cs`: adds `Claims` (unique index on `Reference`) and the nullable `Documents.ClaimId` foreign key.
 
 - `20261015105529_AddClaimOwnership.cs`: adds `Users` (Id = Entra object id), `Claims.AssignedToUserId`/`CreatedByUserId` (FKs to `Users`, SetNull), `Claims.IsPrivate`, and `Documents.UploadedByUserId`. The legacy `Claims.AssignedTo` string stays until the assignment endpoints switch to users.
+- `20261015112551_AddHandlerFlagAndRemoveLegacyAssignee.cs`: adds `Users.IsHandler` and **drops** the legacy free-text `Claims.AssignedTo` (its values were never mapped to users, so they are discarded).
 
 ## Notes
 - Connection string is in `appsettings.json` (development uses localhost:5432; user `aidocint`, password `devpassword` for the local Docker container only).

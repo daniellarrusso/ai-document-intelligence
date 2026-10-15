@@ -38,8 +38,8 @@ public class MeController : ControllerBase
             .Order()
             .ToList();
 
-        return Ok(new CurrentUserResponse(name, roles));
+        return Ok(new CurrentUserResponse(currentUser?.Id, name, roles));
     }
 }
 
-public record CurrentUserResponse(string? Name, IReadOnlyList<string> Roles);
+public record CurrentUserResponse(Guid? Id, string? Name, IReadOnlyList<string> Roles);

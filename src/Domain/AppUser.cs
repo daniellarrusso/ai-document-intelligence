@@ -13,5 +13,9 @@ public class AppUser
 
     public string? Email { get; set; }
 
+    // Whether the user held the Handler role when they last signed in. Roles live in the token, not the
+    // database, so this snapshot is what lets us offer the list of people a claim can be assigned to.
+    public bool IsHandler { get; set; }
+
     public DateTime LastSeenAt { get; set; }
 }

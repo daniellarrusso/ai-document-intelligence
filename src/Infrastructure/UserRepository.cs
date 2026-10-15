@@ -23,6 +23,7 @@ public class UserRepository : IUserRepository
         {
             existing.DisplayName = user.DisplayName;
             existing.Email = user.Email;
+            existing.IsHandler = user.IsHandler;
             existing.LastSeenAt = user.LastSeenAt;
         }
 
@@ -35,5 +36,22 @@ public class UserRepository : IUserRepository
             // Two first requests from the same user raced to insert; the other one won, which is fine.
             _context.Entry(user).State = EntityState.Detached;
         }
+    }
+
+    public async Task<List<AppUser>> GetHandlersAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Users
+            .AsNoTracking()
+            .Where(u => u.IsHandler)
+            .OrderBy(u => u.DisplayName)
+            .ThenBy(u => u.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<AppUser?> FindHandlerAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == id && u.IsHandler, cancellationToken);
     }
 }

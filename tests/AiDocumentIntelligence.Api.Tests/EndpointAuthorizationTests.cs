@@ -25,6 +25,9 @@ public class EndpointAuthorizationTests : IClassFixture<ApiFactory>
         { "GET", "/api/claims/11111111-1111-1111-1111-111111111111", Access.Read },
         { "POST", "/api/claims", Access.Write },
         { "POST", "/api/claims/11111111-1111-1111-1111-111111111111/documents", Access.Write },
+        { "PUT", "/api/claims/11111111-1111-1111-1111-111111111111/assignee", Access.Write },
+        { "PUT", "/api/claims/11111111-1111-1111-1111-111111111111/privacy", Access.Write },
+        { "GET", "/api/users/handlers", Access.Write },
         { "GET", "/api/documents", Access.Read },
         { "GET", "/api/documents/11111111-1111-1111-1111-111111111111", Access.Read },
         { "POST", "/api/documents", Access.Write },
@@ -39,6 +42,13 @@ public class EndpointAuthorizationTests : IClassFixture<ApiFactory>
         if (user != null) request.Headers.Add(TestAuthHandler.UserHeader, user);
         if (roles != null) request.Headers.Add(TestAuthHandler.RolesHeader, roles);
         if (scope != null) request.Headers.Add(TestAuthHandler.ScopeHeader, scope);
+
+        if (method == "PUT")
+        {
+            request.Content = url.EndsWith("/assignee")
+                ? JsonContent.Create(new { userId = "22222222-2222-2222-2222-222222222222" })
+                : JsonContent.Create(new { isPrivate = true });
+        }
 
         if (method == "POST")
         {
