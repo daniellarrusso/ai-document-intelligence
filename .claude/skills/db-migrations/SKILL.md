@@ -27,6 +27,8 @@ Migrations live in `src/Infrastructure/Migrations/`. Review the generated migrat
 - `20261001202016_AddDocumentChunks.cs`: enables the `vector` extension and adds `DocumentChunks` (text + 768-dim embedding, HNSW cosine index).
 - `20261002153227_AddClaims.cs`: adds `Claims` (unique index on `Reference`) and the nullable `Documents.ClaimId` foreign key.
 
+- `20261015105529_AddClaimOwnership.cs`: adds `Users` (Id = Entra object id), `Claims.AssignedToUserId`/`CreatedByUserId` (FKs to `Users`, SetNull), `Claims.IsPrivate`, and `Documents.UploadedByUserId`. The legacy `Claims.AssignedTo` string stays until the assignment endpoints switch to users.
+
 ## Notes
 - Connection string is in `appsettings.json` (development uses localhost:5432; user `aidocint`, password `devpassword` for the local Docker container only).
 - Changing the embedding dimensions needs a migration and a re-index (see `rag-pipeline`).

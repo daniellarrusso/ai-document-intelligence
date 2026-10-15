@@ -22,7 +22,15 @@ public class Claim
 
     public ClaimStatus Status { get; set; }
 
+    // Legacy free-text assignee, superseded by AssignedToUserId; removed once the assignment endpoints use users.
     public string? AssignedTo { get; set; }
+
+    public Guid? AssignedToUserId { get; set; }
+
+    public Guid? CreatedByUserId { get; set; }
+
+    // Private claims are hidden from Readers; only the assigned Handler and Admins can see them.
+    public bool IsPrivate { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

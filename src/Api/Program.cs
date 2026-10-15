@@ -30,6 +30,8 @@ builder.Services.AddScoped<IDocumentChunkRepository, DocumentChunkRepository>();
 builder.Services.AddScoped<IDocumentIndexer, DocumentIndexer>();
 builder.Services.AddScoped<IDocumentQuestionAnswerer, DocumentQuestionAnswerer>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IClaimRepository, ClaimRepository>();
 builder.Services.AddScoped<ClaimService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();

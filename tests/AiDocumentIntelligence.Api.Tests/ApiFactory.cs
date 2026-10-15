@@ -39,6 +39,8 @@ public class ApiFactory : WebApplicationFactory<Program>
                 .ReturnsAsync([]);
             services.Replace(ServiceDescriptor.Scoped(_ => claims.Object));
 
+            services.Replace(ServiceDescriptor.Scoped(_ => Mock.Of<IUserRepository>()));
+
             var documents = new Mock<IDocumentRepository>();
             documents.Setup(r => r.GetDocumentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);

@@ -24,6 +24,28 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.AppUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+                });
+
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,6 +60,9 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid?>("AssignedToUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ClaimantName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -46,8 +71,16 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateOnly>("IncidentDate")
                         .HasColumnType("date");
+
+                    b.Property<bool>("IsPrivate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("PolicyNumber")
                         .IsRequired()
@@ -63,6 +96,10 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("Reference")
                         .IsUnique();
@@ -109,6 +146,9 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClaimId");
@@ -147,6 +187,19 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("DocumentChunks");
+                });
+
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
+                {
+                    b.HasOne("AiDocumentIntelligence.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("AiDocumentIntelligence.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>

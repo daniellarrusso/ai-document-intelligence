@@ -16,7 +16,20 @@ public class ClaimConfiguration : IEntityTypeConfiguration<Claim>
         builder.Property(c => c.AssignedTo).HasMaxLength(Claim.MaxNameLength);
         builder.Property(c => c.AmountClaimed).HasPrecision(Claim.AmountPrecision, Claim.AmountScale);
 
+        builder.Property(c => c.IsPrivate).HasDefaultValue(false);
+
         builder.HasIndex(c => c.Reference).IsUnique();
+        builder.HasIndex(c => c.AssignedToUserId);
+
+        // SetNull: removing a user must not delete or block their claims.
+        builder.HasOne<AppUser>()
+            .WithMany()
+            .HasForeignKey(c => c.AssignedToUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne<AppUser>()
+            .WithMany()
+            .HasForeignKey(c => c.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Restrict: deleting a claim must not silently delete its documents.
         builder.HasMany(c => c.Documents)
