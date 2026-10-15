@@ -34,6 +34,11 @@ export const PIPELINE_STATUSES: DocumentStatus[] = [
   DocumentStatus.Completed,
 ];
 
+/** True until the document reaches a terminal status (Completed or Failed). */
+export function isDocumentInProgress(status: DocumentStatus): boolean {
+  return status !== DocumentStatus.Completed && status !== DocumentStatus.Failed;
+}
+
 export interface DocumentSummary {
   id: string;
   fileName: string;
@@ -44,6 +49,8 @@ export interface DocumentSummary {
   processedAt: string | null;
   extractedText: string | null;
   summary: string | null;
+  /** The claim the document belongs to, if any. */
+  claimId?: string | null;
 }
 
 // A retrieved document excerpt that supports an answer. Score is cosine similarity (higher is more relevant).

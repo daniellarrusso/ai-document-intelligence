@@ -29,6 +29,28 @@ public class DocumentServiceTests
     }
 
     [Fact]
+    public async Task SaveDocumentAsync_WithClaimId_AttachesDocumentToClaim()
+    {
+        var claimId = Guid.NewGuid();
+        var sut = CreateSut();
+
+        var document = await sut.SaveDocumentAsync(CreateRequest(), claimId);
+
+        Assert.Equal(claimId, document.ClaimId);
+        _repositoryMock.Verify(r => r.CreateDocumentAsync(It.Is<Document>(d => d.ClaimId == claimId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_WithoutClaimId_LeavesDocumentUnattached()
+    {
+        var sut = CreateSut();
+
+        var document = await sut.SaveDocumentAsync(CreateRequest());
+
+        Assert.Null(document.ClaimId);
+    }
+
+    [Fact]
     public async Task SaveDocumentAsync_UploadFails_DoesNotEnqueueDocument()
     {
         _storageMock

@@ -7,6 +7,11 @@ export const serverRoutes: ServerRoute[] = [
     renderMode: RenderMode.Client,
   },
   {
+    // Claim ids are only known at runtime, so this page can't be prerendered either.
+    path: 'claims/:id',
+    renderMode: RenderMode.Client,
+  },
+  {
     path: '**',
     renderMode: RenderMode.Prerender,
   },

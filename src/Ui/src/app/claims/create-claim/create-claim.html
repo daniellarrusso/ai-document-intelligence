@@ -1,0 +1,86 @@
+<h2 class="mb-4 font-semibold text-slate-900">Create claim</h2>
+
+<form class="grid grid-cols-1 gap-4 sm:grid-cols-2" (submit)="$event.preventDefault(); submit()">
+  <div>
+    <label for="claim-policy" class="mb-1 block text-xs uppercase tracking-wide text-slate-500">Policy number</label>
+    <input
+      id="claim-policy"
+      type="text"
+      class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+      required
+      [attr.maxlength]="limits.policyNumber"
+      [value]="policyNumber()"
+      (input)="onInput('policyNumber', $event)"
+    />
+  </div>
+
+  <div>
+    <label for="claim-claimant" class="mb-1 block text-xs uppercase tracking-wide text-slate-500">Claimant name</label>
+    <input
+      id="claim-claimant"
+      type="text"
+      class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+      required
+      [attr.maxlength]="limits.name"
+      [value]="claimantName()"
+      (input)="onInput('claimantName', $event)"
+    />
+  </div>
+
+  <div>
+    <label for="claim-date" class="mb-1 block text-xs uppercase tracking-wide text-slate-500">Incident date</label>
+    <input
+      id="claim-date"
+      type="date"
+      class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+      required
+      [attr.max]="today"
+      [value]="incidentDate()"
+      (input)="onInput('incidentDate', $event)"
+    />
+  </div>
+
+  <div>
+    <label for="claim-amount" class="mb-1 block text-xs uppercase tracking-wide text-slate-500">Amount claimed</label>
+    <input
+      id="claim-amount"
+      type="number"
+      min="0.01"
+      step="0.01"
+      class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+      required
+      [value]="amountClaimed()"
+      (input)="onInput('amountClaimed', $event)"
+    />
+  </div>
+
+  <div class="sm:col-span-2">
+    <label for="claim-assignee" class="mb-1 block text-xs uppercase tracking-wide text-slate-500">
+      Assigned to (optional)
+    </label>
+    <input
+      id="claim-assignee"
+      type="text"
+      class="w-full rounded-md border border-slate-300 p-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+      [attr.maxlength]="limits.name"
+      [value]="assignedTo()"
+      (input)="onInput('assignedTo', $event)"
+    />
+  </div>
+
+  <div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+    <button
+      type="submit"
+      class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+      [disabled]="!valid() || saving()"
+    >
+      {{ saving() ? 'Creating...' : 'Create claim' }}
+    </button>
+
+    @if (error()) {
+      <p class="text-sm text-red-600" role="alert">{{ error() }}</p>
+    } @else if (created()) {
+      <p class="text-sm text-slate-600" role="status">{{ created() }}</p>
+    }
+  </div>
+</form>

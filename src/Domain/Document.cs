@@ -21,4 +21,7 @@ public class Document
     public string? ExtractedText { get; set; }
 
     public string? Summary { get; set; }
+
+    // Null for documents that aren't attached to a claim (including all documents uploaded before claims existed).
+    public Guid? ClaimId { get; set; }
 }

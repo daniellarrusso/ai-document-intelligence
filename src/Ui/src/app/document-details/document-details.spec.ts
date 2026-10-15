@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
+import { UserService } from '../auth/user.service';
 import { DocumentStatus, DocumentSummary } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { DocumentDetails } from './document-details';
@@ -18,12 +20,13 @@ const sample: DocumentSummary = {
   summary: 'A brief report about hello world.',
 };
 
-async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>) {
+async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>, canWrite = true) {
   await TestBed.configureTestingModule({
     imports: [DocumentDetails],
     providers: [
       provideRouter([]),
       { provide: DocumentService, useValue: service },
+      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'abc']]) } } },
     ],
   }).compileComponents();
@@ -158,6 +161,41 @@ describe('DocumentDetails', () => {
     const { el } = await render({ getDocument: () => throwError(() => ({ status: 500 })) });
 
     expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to load document.');
+  });
+
+  it('links back to the documents list for a standalone document', async () => {
+    const { el } = await render({ getDocument: () => of(sample) });
+
+    const back = el.querySelector<HTMLAnchorElement>('a')!;
+    expect(back.textContent).toContain('Back to documents');
+    expect(back.getAttribute('href')).toBe('/');
+  });
+
+  it('links back to the claim when the document belongs to one', async () => {
+    const { el } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }) });
+
+    const back = el.querySelector<HTMLAnchorElement>('a')!;
+    expect(back.textContent).toContain('Back to claim');
+    expect(back.getAttribute('href')).toBe('/claims/claim-1');
+  });
+
+  it('returns to the claim after deleting one of its documents', async () => {
+    const del = vi.fn(() => of(undefined));
+    const { click } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }), delete: del });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await click('button', 'Delete');
+    await click('[role="dialog"] button', 'Delete');
+
+    expect(navigate).toHaveBeenCalledWith('/claims/claim-1');
+  });
+
+  it('does not offer Delete to a read-only user, who can still ask questions', async () => {
+    const { el } = await render({ getDocument: () => of(sample) }, false);
+
+    const labels = Array.from(el.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(labels).not.toContain('Delete');
+    expect(labels).toContain('Ask');
   });
 
   it('asks for confirmation before deleting and does nothing on cancel', async () => {
