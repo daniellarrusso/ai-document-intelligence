@@ -1,10 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, DestroyRef, ElementRef, afterNextRender, inject, signal, viewChild } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Component, DestroyRef, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DocumentStatus, documentStatusLabel, isDocumentInProgress } from '../../document-list/document.model';
 import { formatFileSize } from '../../shared/format-file-size';
 import { UserService } from '../../auth/user.service';
-import { ClaimDetail, ClaimStatus, claimStatusLabel } from '../claim.model';
+import { ClaimDetail, ClaimStatus, Handler, claimStatusLabel } from '../claim.model';
 import { ClaimService } from '../claim.service';
 
 const POLL_INTERVAL_MS = 2000;
@@ -17,6 +18,7 @@ const POLL_INTERVAL_MS = 2000;
 export class ClaimDetails {
   private readonly claimService = inject(ClaimService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   // Set after an upload until a refresh succeeds, so a failed refresh is retried even if nothing was processing before.
@@ -32,11 +34,105 @@ export class ClaimDetails {
   protected readonly uploading = signal(false);
   protected readonly uploadError = signal('');
 
+  protected readonly handlers = signal<Handler[]>([]);
+  protected readonly handlersError = signal(false);
+  /** The handler chosen in the dropdown but not yet saved; null means "unchanged". */
+  protected readonly pendingAssignee = signal<string | null>(null);
+  protected readonly assigning = signal(false);
+  protected readonly assignError = signal('');
+  protected readonly privacyError = signal('');
+
+  protected readonly selectedAssignee = computed(
+    () => this.pendingAssignee() ?? this.detail()?.claim.assignedToUserId ?? '',
+  );
+
+  protected readonly canReassign = computed(() => {
+    const pending = this.pendingAssignee();
+    return pending !== null && pending !== '' && pending !== this.detail()?.claim.assignedToUserId && !this.assigning();
+  });
+
+  /** The handlers, plus the current assignee if they are not in that list so the dropdown can still show them. */
+  protected readonly assigneeOptions = computed<Handler[]>(() => {
+    const handlers = this.handlers();
+    const claim = this.detail()?.claim;
+    if (claim?.assignedToUserId && !handlers.some((h) => h.id === claim.assignedToUserId)) {
+      return [{ id: claim.assignedToUserId, displayName: claim.assignedToName ?? 'Current assignee' }, ...handlers];
+    }
+    return handlers;
+  });
+
   constructor() {
     inject(DestroyRef).onDestroy(() => clearTimeout(this.pollTimer));
 
     // Browser only (avoids calling the API during SSR).
-    afterNextRender(() => this.load());
+    afterNextRender(() => {
+      this.load();
+      if (this.user.canWrite()) {
+        this.loadHandlers();
+      }
+    });
+  }
+
+  private loadHandlers(): void {
+    this.claimService.getHandlers().subscribe({
+      next: (handlers) => {
+        this.handlers.set(handlers);
+        this.handlersError.set(false);
+      },
+      error: () => this.handlersError.set(true),
+    });
+  }
+
+  protected onAssigneeChange(event: Event): void {
+    this.pendingAssignee.set((event.target as HTMLSelectElement).value);
+  }
+
+  protected reassign(): void {
+    const claimId = this.detail()?.claim.id;
+    const assigneeId = this.pendingAssignee();
+    if (!claimId || !assigneeId || !this.canReassign()) {
+      return;
+    }
+
+    this.assigning.set(true);
+    this.assignError.set('');
+
+    this.claimService.assignClaim(claimId, assigneeId).subscribe({
+      next: () => {
+        this.assigning.set(false);
+        this.pendingAssignee.set(null);
+        if (this.user.isAdmin()) {
+          this.load();
+        } else {
+          // A handler can only see their own claims, so the claim they just gave away is no longer theirs to open.
+          void this.router.navigateByUrl('/claims');
+        }
+      },
+      error: (err: HttpErrorResponse) => {
+        this.assigning.set(false);
+        this.assignError.set(
+          err.status === 400 && typeof err.error === 'string' && err.error
+            ? err.error
+            : 'Unable to reassign the claim.',
+        );
+      },
+    });
+  }
+
+  protected togglePrivate(event: Event): void {
+    const claimId = this.detail()?.claim.id;
+    if (!claimId) {
+      return;
+    }
+
+    this.privacyError.set('');
+    this.claimService.setPrivacy(claimId, (event.target as HTMLInputElement).checked).subscribe({
+      next: () => this.load(),
+      error: () => {
+        this.privacyError.set('Unable to change the claim privacy.');
+        this.load();
+      },
+    });
   }
 
   private load(): void {

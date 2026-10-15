@@ -1,8 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { Claim, ClaimStatus } from '../claim.model';
+import { UserService } from '../../auth/user.service';
+import { Claim, ClaimStatus, Handler } from '../claim.model';
 import { ClaimService } from '../claim.service';
 import { CreateClaim } from './create-claim';
 
@@ -14,14 +16,28 @@ const created: Claim = {
   incidentDate: '2026-09-01',
   amountClaimed: 100,
   status: ClaimStatus.Open,
-  assignedTo: null,
+  assignedToUserId: null,
+  assignedToName: null,
+  isPrivate: false,
   createdAt: '2026-09-02T10:00:00Z',
 };
 
-async function render(createClaim: (...args: unknown[]) => unknown = () => of(created)) {
+const handlers: Handler[] = [
+  { id: 'me-id', displayName: 'Me Myself' },
+  { id: 'sam-id', displayName: 'Sam Handler' },
+  { id: 'olive-id', displayName: 'Olive Other' },
+];
+
+async function render(
+  createClaim: (...args: unknown[]) => unknown = () => of(created),
+  getHandlers: () => unknown = () => of(handlers),
+) {
   await TestBed.configureTestingModule({
     imports: [CreateClaim],
-    providers: [{ provide: ClaimService, useValue: { createClaim } }],
+    providers: [
+      { provide: ClaimService, useValue: { createClaim, getHandlers } },
+      { provide: UserService, useValue: { user: signal({ id: 'me-id', name: 'Me', roles: ['Handler'] }) } },
+    ],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(CreateClaim);
@@ -32,6 +48,12 @@ async function render(createClaim: (...args: unknown[]) => unknown = () => of(cr
     const input = el.querySelector<HTMLInputElement>(selector)!;
     input.value = value;
     input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  };
+  const choose = (selector: string, value: string) => {
+    const select = el.querySelector<HTMLSelectElement>(selector)!;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
   };
   const submitButton = () => el.querySelector<HTMLButtonElement>('button[type="submit"]')!;
@@ -46,7 +68,7 @@ async function render(createClaim: (...args: unknown[]) => unknown = () => of(cr
     await fixture.whenStable();
   };
 
-  return { fixture, el, type, submitButton, fillValid, submit };
+  return { fixture, el, type, choose, submitButton, fillValid, submit };
 }
 
 describe('CreateClaim', () => {
@@ -73,11 +95,10 @@ describe('CreateClaim', () => {
     expect(submitButton().disabled).toBe(true);
   });
 
-  it('submits trimmed values, with a blank assignee sent as null', async () => {
+  it('submits trimmed values, defaulting to the creator and a public claim', async () => {
     const createClaim = vi.fn(() => of(created));
-    const { fillValid, submit, type } = await render(createClaim);
+    const { fillValid, submit } = await render(createClaim);
     fillValid();
-    type('#claim-assignee', '   ');
 
     await submit();
 
@@ -86,8 +107,62 @@ describe('CreateClaim', () => {
       claimantName: 'Jane Doe',
       incidentDate: '2026-09-01',
       amountClaimed: 100.5,
-      assignedTo: null,
+      assignedToUserId: null,
+      isPrivate: false,
     });
+  });
+
+  it('offers a dropdown of the other handlers, with the creator as the default option', async () => {
+    const { el } = await render();
+
+    const options = Array.from(el.querySelectorAll<HTMLOptionElement>('#claim-assignee option'));
+    expect(el.querySelector('#claim-assignee')?.tagName).toBe('SELECT');
+    expect(options.map((o) => o.textContent?.trim())).toEqual(['Me (default)', 'Sam Handler', 'Olive Other']);
+    expect(options[0].value).toBe('');
+  });
+
+  it('assigns to the chosen handler and can mark the claim private', async () => {
+    const createClaim = vi.fn(() => of(created));
+    const { el, fixture, fillValid, submit, choose } = await render(createClaim);
+    fillValid();
+    choose('#claim-assignee', 'sam-id');
+    const privateBox = el.querySelector<HTMLInputElement>('#claim-private')!;
+    privateBox.checked = true;
+    privateBox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    await submit();
+
+    expect(createClaim).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedToUserId: 'sam-id', isPrivate: true }),
+    );
+  });
+
+  it('resets the assignee and privacy after a successful create', async () => {
+    const { el, fixture, fillValid, submit, choose } = await render();
+    fillValid();
+    choose('#claim-assignee', 'olive-id');
+    const privateBox = el.querySelector<HTMLInputElement>('#claim-private')!;
+    privateBox.checked = true;
+    privateBox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    await submit();
+    fixture.detectChanges();
+
+    expect(el.querySelector<HTMLSelectElement>('#claim-assignee')!.value).toBe('');
+    expect(el.querySelector<HTMLInputElement>('#claim-private')!.checked).toBe(false);
+  });
+
+  it('still lets the creator file a claim when the handler list fails to load', async () => {
+    const createClaim = vi.fn(() => of(created));
+    const { el, fillValid, submit } = await render(createClaim, () => throwError(() => new HttpErrorResponse({ status: 500 })));
+    fillValid();
+
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to load the list of handlers.');
+    await submit();
+
+    expect(createClaim).toHaveBeenCalled();
   });
 
   it('confirms the new reference and clears the form on success', async () => {

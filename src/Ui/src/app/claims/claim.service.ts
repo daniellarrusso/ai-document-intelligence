@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Claim, ClaimDetail, ClaimDocument, ClaimStatus, CreateClaimRequest } from './claim.model';
+import { Claim, ClaimDetail, ClaimDocument, ClaimStatus, CreateClaimRequest, Handler } from './claim.model';
 
 export interface ClaimQuery {
   search?: string;
@@ -42,6 +42,20 @@ export class ClaimService {
     formData.append('file', file);
 
     return this.http.post<ClaimDocument>(`${this.baseUrl}/${claimId}/documents`, formData);
+  }
+
+  /** The people a claim can be assigned to (Handlers and Admins only; the API refuses Readers). */
+  getHandlers(): Observable<Handler[]> {
+    return this.http.get<Handler[]>(`${environment.apiBaseUrl}/users/handlers`);
+  }
+
+  /** Hands the claim to another handler. The previous handler can no longer see it afterwards. */
+  assignClaim(claimId: string, userId: string): Observable<void> {
+    return this.http.put<void>(`${this.baseUrl}/${claimId}/assignee`, { userId });
+  }
+
+  setPrivacy(claimId: string, isPrivate: boolean): Observable<void> {
+    return this.http.put<void>(`${this.baseUrl}/${claimId}/privacy`, { isPrivate });
   }
 
   createClaim(request: CreateClaimRequest): Observable<Claim> {

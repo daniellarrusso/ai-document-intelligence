@@ -2,9 +2,10 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { WRITE_ROLES } from './roles';
+import { AppRole, WRITE_ROLES } from './roles';
 
 export interface CurrentUser {
+  id: string | null;
   name: string | null;
   roles: string[];
 }
@@ -28,6 +29,9 @@ export class UserService {
 
   /** Whether the UI should offer actions that create or change data. The API enforces this independently. */
   readonly canWrite = computed(() => this.user()?.roles.some((role) => WRITE_ROLES.includes(role)) ?? false);
+
+  /** Admins see and act on every claim; everyone else is limited to their own (the API enforces this). */
+  readonly isAdmin = computed(() => this.user()?.roles.includes(AppRole.Admin) ?? false);
 
   /** Loads the user once; later calls reuse the result (a failed load can be retried). */
   ensureLoaded(): Promise<void> {

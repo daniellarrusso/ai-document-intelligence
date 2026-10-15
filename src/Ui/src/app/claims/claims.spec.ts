@@ -11,8 +11,8 @@ async function render(canWrite: boolean) {
     imports: [Claims],
     providers: [
       provideRouter([]),
-      { provide: ClaimService, useValue: { getClaims: () => of([]), createClaim: () => of({}), created: signal(0) } },
-      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
+      { provide: ClaimService, useValue: { getClaims: () => of([]), getHandlers: () => of([]), createClaim: () => of({}), created: signal(0) } },
+      { provide: UserService, useValue: { canWrite: signal(canWrite), user: signal(null) } },
     ],
   }).compileComponents();
 

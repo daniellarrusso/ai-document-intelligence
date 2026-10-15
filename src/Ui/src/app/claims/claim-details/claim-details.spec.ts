@@ -1,12 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { UserService } from '../../auth/user.service';
 import { DocumentStatus } from '../../document-list/document.model';
-import { ClaimDetail, ClaimDocument, ClaimStatus } from '../claim.model';
+import { ClaimDetail, ClaimDocument, ClaimStatus, Handler } from '../claim.model';
 import { ClaimService } from '../claim.service';
 import { ClaimDetails } from './claim-details';
 
@@ -30,21 +30,30 @@ const detail: ClaimDetail = {
     incidentDate: '2026-09-01',
     amountClaimed: 1500.5,
     status: ClaimStatus.InReview,
-    assignedTo: 'sam',
+    assignedToUserId: 'sam-id',
+    assignedToName: 'Sam Handler',
+    isPrivate: false,
     createdAt: '2026-09-02T09:00:00Z',
   },
   documents: [document],
 };
 
-type Service = Partial<Record<'getClaim' | 'uploadDocument', unknown>>;
+const handlers: Handler[] = [
+  { id: 'sam-id', displayName: 'Sam Handler' },
+  { id: 'olive-id', displayName: 'Olive Other' },
+];
 
-async function render(service: Service, settle = true, canWrite = true) {
+type Service = Partial<
+  Record<'getClaim' | 'uploadDocument' | 'getHandlers' | 'assignClaim' | 'setPrivacy', unknown>
+>;
+
+async function render(service: Service, settle = true, canWrite = true, isAdmin = false) {
   await TestBed.configureTestingModule({
     imports: [ClaimDetails],
     providers: [
       provideRouter([]),
-      { provide: ClaimService, useValue: service },
-      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
+      { provide: ClaimService, useValue: { getHandlers: () => of(handlers), ...service } },
+      { provide: UserService, useValue: { canWrite: signal(canWrite), isAdmin: signal(isAdmin) } },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'claim-1']]) } } },
     ],
   }).compileComponents();
@@ -78,7 +87,7 @@ describe('ClaimDetails', () => {
     expect(el.textContent).toContain('POL-1');
     expect(el.textContent).toContain('1,500.50');
     expect(el.textContent).toContain('In review');
-    expect(el.textContent).toContain('sam');
+    expect(el.textContent).toContain('Sam Handler');
 
     const link = el.querySelector<HTMLAnchorElement>('tbody a')!;
     expect(link.textContent?.trim()).toBe('report.pdf');
@@ -88,8 +97,8 @@ describe('ClaimDetails', () => {
   });
 
   it('shows Unassigned when nobody is assigned', async () => {
-    const unassigned = { ...detail, claim: { ...detail.claim, assignedTo: null } };
-    const { el } = await render({ getClaim: () => of(unassigned) });
+    const unassigned = { ...detail, claim: { ...detail.claim, assignedToUserId: null, assignedToName: null } };
+    const { el } = await render({ getClaim: () => of(unassigned) }, true, false);
 
     expect(el.textContent).toContain('Unassigned');
   });
@@ -225,5 +234,144 @@ describe('ClaimDetails', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
     expect(getClaim).toHaveBeenCalledTimes(3);
+  });
+
+  describe('assignment', () => {
+    const select = (el: HTMLElement) => el.querySelector<HTMLSelectElement>('#claim-assignee')!;
+    const reassignButton = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find((b) => /Reassign/.test(b.textContent ?? ''))!;
+    const choose = (fixture: { detectChanges: () => void }, el: HTMLElement, value: string) => {
+      select(el).value = value;
+      select(el).dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    it('shows a dropdown of handlers with the current assignee selected', async () => {
+      const { el } = await render({ getClaim: () => of(detail) });
+
+      const options = Array.from(select(el).options);
+      expect(options.map((o) => o.textContent?.trim())).toEqual(['Sam Handler', 'Olive Other']);
+      expect(select(el).value).toBe('sam-id');
+      expect(reassignButton(el).disabled).toBe(true);
+    });
+
+    it('keeps showing an assignee who is not in the handler list', async () => {
+      const getHandlers = () => of([{ id: 'olive-id', displayName: 'Olive Other' }]);
+      const { el } = await render({ getClaim: () => of(detail), getHandlers });
+
+      expect(Array.from(select(el).options).map((o) => o.textContent?.trim())).toEqual(['Sam Handler', 'Olive Other']);
+      expect(select(el).value).toBe('sam-id');
+    });
+
+    it('offers no dropdown to a read-only user, just the assignee name', async () => {
+      const getHandlers = vi.fn(() => of(handlers));
+      const { el } = await render({ getClaim: () => of(detail), getHandlers }, true, false);
+
+      expect(el.querySelector('#claim-assignee')).toBeNull();
+      expect(el.querySelector('#claim-private')).toBeNull();
+      expect(el.textContent).toContain('Sam Handler');
+      expect(getHandlers).not.toHaveBeenCalled();
+    });
+
+    it('enables Reassign only once a different handler is chosen', async () => {
+      const { fixture, el } = await render({ getClaim: () => of(detail) });
+
+      choose(fixture, el, 'sam-id');
+      expect(reassignButton(el).disabled).toBe(true);
+
+      choose(fixture, el, 'olive-id');
+      expect(reassignButton(el).disabled).toBe(false);
+    });
+
+    it('lets an admin reassign and then reloads the claim', async () => {
+      const assignClaim = vi.fn(() => of(undefined));
+      const reassigned = { ...detail, claim: { ...detail.claim, assignedToUserId: 'olive-id', assignedToName: 'Olive Other' } };
+      const getClaim = vi.fn().mockReturnValueOnce(of(detail)).mockReturnValue(of(reassigned));
+      const { fixture, el } = await render({ getClaim, assignClaim }, true, true, true);
+      choose(fixture, el, 'olive-id');
+
+      reassignButton(el).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(assignClaim).toHaveBeenCalledWith('claim-1', 'olive-id');
+      expect(getClaim).toHaveBeenCalledTimes(2);
+      expect(select(el).value).toBe('olive-id');
+    });
+
+    it('sends a handler back to the claims list after giving the claim away', async () => {
+      const assignClaim = vi.fn(() => of(undefined));
+      const getClaim = vi.fn(() => of(detail));
+      const { fixture, el } = await render({ getClaim, assignClaim }, true, true, false);
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      choose(fixture, el, 'olive-id');
+
+      reassignButton(el).click();
+      await fixture.whenStable();
+
+      expect(navigate).toHaveBeenCalledWith('/claims');
+      expect(getClaim).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the server message when the assignee is rejected', async () => {
+      const assignClaim = vi.fn(() =>
+        throwError(() => new HttpErrorResponse({ status: 400, error: 'The assignee must be a handler.' })),
+      );
+      const { fixture, el } = await render({ getClaim: () => of(detail), assignClaim });
+      choose(fixture, el, 'olive-id');
+
+      reassignButton(el).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(el.querySelector('[role="alert"]')?.textContent).toContain('The assignee must be a handler.');
+      expect(reassignButton(el).disabled).toBe(false);
+    });
+
+    it('says so when the list of handlers cannot be loaded', async () => {
+      const getHandlers = () => throwError(() => new HttpErrorResponse({ status: 500 }));
+      const { el } = await render({ getClaim: () => of(detail), getHandlers });
+
+      expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to load the list of handlers.');
+    });
+  });
+
+  describe('privacy', () => {
+    it('toggles the claim private and reloads', async () => {
+      const setPrivacy = vi.fn(() => of(undefined));
+      const getClaim = vi.fn(() => of(detail));
+      const { fixture, el } = await render({ getClaim, setPrivacy });
+      const box = el.querySelector<HTMLInputElement>('#claim-private')!;
+      expect(box.checked).toBe(false);
+
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+
+      expect(setPrivacy).toHaveBeenCalledWith('claim-1', true);
+      expect(getClaim).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows an error and reloads when the change fails', async () => {
+      const setPrivacy = vi.fn(() => throwError(() => new HttpErrorResponse({ status: 500 })));
+      const getClaim = vi.fn(() => of(detail));
+      const { fixture, el } = await render({ getClaim, setPrivacy });
+      const box = el.querySelector<HTMLInputElement>('#claim-private')!;
+
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(el.querySelector('[role="alert"]')?.textContent).toContain('Unable to change the claim privacy.');
+      expect(getClaim).toHaveBeenCalledTimes(2);
+    });
+
+    it('tells a read-only user whether the claim is private', async () => {
+      const privateDetail = { ...detail, claim: { ...detail.claim, isPrivate: true } };
+      const { el } = await render({ getClaim: () => of(privateDetail) }, true, false);
+
+      expect(el.textContent).toContain('Private');
+    });
   });
 });
