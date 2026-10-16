@@ -6,6 +6,8 @@ description: Document indexing and question answering (RAG) using Ollama embeddi
 # RAG (question answering over a document)
 
 ## Indexing
+Text comes from `PdfDocumentTextExtractor` using PdfPig's `ContentOrderTextExtractor` (layout analysis: words and line breaks rebuilt from letter positions), falling back to `page.Text` if that throws on a page. Do not switch to plain `page.Text`: it is only the letters in drawing order, so lines and words run together ("1234567Claimant", "ADAMS50 REDVERS") and claim matching breaks. Documents extracted before this change keep their old glued text until reprocessed. PDFs without a text layer (scans) yield no text; that would need OCR.
+
 After summarising, `LocalDocumentProcessingWorker` calls `IDocumentIndexer` (status `IndexingDocument`), which splits `ExtractedText` with `TextChunker`, embeds the chunks via `IEmbeddingGenerator` (Ollama) and stores them in `DocumentChunks`. Best-effort: a failure leaves the document `Completed` but unqueryable.
 
 ## Querying
