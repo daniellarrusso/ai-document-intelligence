@@ -160,6 +160,105 @@
         </ul>
       }
 
+      @if (canScan()) {
+        <div class="mt-3 rounded-md border border-slate-200 p-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              [disabled]="scanning()"
+              (click)="scanForMatches()"
+            >
+              {{ scanning() ? 'Scanning...' : 'Scan for matches' }}
+            </button>
+            <span class="text-xs text-slate-500">
+              Looks for claim references, policy numbers and claimant names in this document.
+            </span>
+          </div>
+
+          @if (scanError()) {
+            <p class="mt-3 text-sm text-red-600" role="alert">{{ scanError() }}</p>
+          }
+
+          @if (scan(); as result) {
+            @if (!result.textAvailable) {
+              <p class="mt-3 text-sm text-slate-500">This document has no extracted text to check.</p>
+            } @else {
+              @if (result.suggestions.length > 0) {
+                <h4 class="mt-4 text-sm font-medium text-slate-900">Possible matches</h4>
+                <ul class="mt-2 divide-y divide-slate-100 text-sm">
+                  @for (match of result.suggestions; track match.claim.id) {
+                    <li class="flex items-center justify-between gap-3 py-2">
+                      <span>
+                        <span class="font-medium">{{ match.claim.reference }}</span>
+                        <span class="ml-2 text-slate-600">{{ match.claim.claimantName }}</span>
+                        <span class="mt-0.5 block text-xs text-slate-500">
+                          {{ matchLabel(match.method) }}: {{ match.detail }}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        class="shrink-0 rounded-md border border-sky-600 px-3 py-1 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        [disabled]="linkingIds().has(match.claim.id)"
+                        [attr.aria-label]="'Link to ' + match.claim.reference"
+                        (click)="linkToClaim(match.claim.id)"
+                      >
+                        Link
+                      </button>
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="mt-3 text-sm text-slate-500">
+                  No other claims found in this document.
+                  @if (result.aiFailed) {
+                    The AI service was unavailable, so it could not be asked.
+                  }
+                </p>
+                @if (!result.aiAttempted) {
+                  <button
+                    type="button"
+                    class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    [disabled]="scanning()"
+                    (click)="scanForMatches(true)"
+                  >
+                    Try AI match
+                  </button>
+                }
+              }
+
+              @for (check of unsupportedLinks(); track check.claim.id) {
+                <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm" role="status">
+                  <p class="text-slate-900">
+                    This document is linked to <span class="font-medium">{{ check.claim.reference }}</span>
+                    ({{ check.claim.claimantName }}) but never mentions it.
+                  </p>
+                  <div class="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      [disabled]="linkingIds().has(check.claim.id)"
+                      [attr.aria-label]="'Unlink from ' + check.claim.reference + ' as it is not mentioned'"
+                      (click)="unlinkFromClaim(check.claim.id)"
+                    >
+                      Unlink
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-md border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-white"
+                      [attr.aria-label]="'Keep link to ' + check.claim.reference"
+                      (click)="keepLink(check.claim.id)"
+                    >
+                      Keep
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+          }
+        </div>
+      }
+
       @if (user.canWrite()) {
         <details class="mt-3 rounded-md border border-slate-200 p-4">
           <summary class="cursor-pointer text-sm font-medium text-sky-700 hover:underline">Link to a claim</summary>
@@ -272,6 +371,62 @@
           (click)="confirmDelete()"
         >
           {{ deleting() ? 'Deleting...' : 'Delete' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (confirmingMatch() && scan(); as result) {
+  <div class="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/50 p-4" (click)="closeMatchDialog()">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="match-title"
+      class="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg"
+      (click)="$event.stopPropagation()"
+    >
+      <h3 id="match-title" class="font-semibold text-slate-900">Link this document to a claim?</h3>
+      <p class="mt-2 text-sm text-slate-600">
+        "{{ document()?.fileName }}" looks like it belongs to
+        {{ result.suggestions.length === 1 ? 'this claim' : 'these claims' }}.
+        @if (result.aiAttempted) {
+          These were suggested by the AI, so please check them.
+        }
+      </p>
+
+      <ul class="mt-4 divide-y divide-slate-100 text-sm">
+        @for (match of result.suggestions; track match.claim.id) {
+          <li class="flex items-center justify-between gap-3 py-3">
+            <span>
+              <span class="font-medium">{{ match.claim.reference }}</span>
+              <span class="ml-2 text-slate-600">{{ match.claim.claimantName }}</span>
+              <span class="mt-0.5 block text-xs text-slate-500">{{ matchLabel(match.method) }}: {{ match.detail }}</span>
+            </span>
+            <button
+              type="button"
+              class="shrink-0 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              [disabled]="linkingIds().has(match.claim.id)"
+              [attr.aria-label]="'Confirm link to ' + match.claim.reference"
+              (click)="linkToClaim(match.claim.id)"
+            >
+              Link
+            </button>
+          </li>
+        }
+      </ul>
+
+      @if (linkError()) {
+        <p class="mt-3 text-sm text-red-600" role="alert">{{ linkError() }}</p>
+      }
+
+      <div class="mt-6 flex justify-end">
+        <button
+          type="button"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          (click)="closeMatchDialog()"
+        >
+          Not now
         </button>
       </div>
     </div>

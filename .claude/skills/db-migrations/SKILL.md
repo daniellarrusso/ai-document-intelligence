@@ -30,6 +30,7 @@ Migrations live in `src/Infrastructure/Migrations/`. Review the generated migrat
 - `20261015105529_AddClaimOwnership.cs`: adds `Users` (Id = Entra object id), `Claims.AssignedToUserId`/`CreatedByUserId` (FKs to `Users`, SetNull), `Claims.IsPrivate`, and `Documents.UploadedByUserId`. The legacy `Claims.AssignedTo` string stays until the assignment endpoints switch to users.
 - `20261015112551_AddHandlerFlagAndRemoveLegacyAssignee.cs`: adds `Users.IsHandler` and **drops** the legacy free-text `Claims.AssignedTo` (its values were never mapped to users, so they are discarded).
 - `20261016050617_LinkDocumentsToManyClaims.cs`: adds the `ClaimDocuments` join table (composite key, FK to Claims `Restrict`, to Documents `Cascade`, to Users `SetNull`), copies every existing `Documents.ClaimId` into it, then drops `Documents.ClaimId`. `Down` restores one claim per document (the earliest link). The scaffold dropped the column first; it was reordered by hand, so keep that order if regenerated.
+- `AddDocumentContentHash`: adds nullable `Documents.ContentHash` (varchar(64), lowercase hex SHA-256 of the uploaded bytes) with a **non-unique** index. Existing documents stay null until backfilled.
 
 ## Notes
 - Connection string is in `appsettings.json` (development uses localhost:5432; user `aidocint`, password `devpassword` for the local Docker container only).

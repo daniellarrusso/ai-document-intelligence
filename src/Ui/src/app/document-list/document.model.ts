@@ -1,3 +1,5 @@
+import { Claim } from '../claims/claim.model';
+
 // Mirrors AiDocumentIntelligence.Domain.DocumentStatus (serialised as a number by the API).
 // New values are appended, matching the backend enum, since the underlying number is persisted.
 export enum DocumentStatus {
@@ -49,6 +51,51 @@ export interface DocumentSummary {
   processedAt: string | null;
   extractedText: string | null;
   summary: string | null;
+  /** How many claims the document is linked to; 0 means unmatched. Only present on list responses. */
+  claimCount?: number;
+}
+
+/** Mirrors the backend MatchMethod enum (serialised as an integer): what kind of evidence tied a document to a claim. */
+export enum MatchMethod {
+  Reference = 0,
+  PolicyNumber = 1,
+  ClaimantName = 2,
+  Ai = 3,
+}
+
+const MATCH_METHOD_LABELS: Record<MatchMethod, string> = {
+  [MatchMethod.Reference]: 'Claim reference',
+  [MatchMethod.PolicyNumber]: 'Policy number',
+  [MatchMethod.ClaimantName]: 'Claimant name',
+  [MatchMethod.Ai]: 'AI suggestion',
+};
+
+export function matchMethodLabel(method: MatchMethod): string {
+  return MATCH_METHOD_LABELS[method] ?? 'Match';
+}
+
+/** A claim the document appears to belong to, and why. */
+export interface ClaimMatch {
+  claim: Claim;
+  method: MatchMethod;
+  detail: string;
+}
+
+/** A current link; `supported` is false when the document's text never mentions the claim. */
+export interface LinkedClaimCheck {
+  claim: Claim;
+  supported: boolean;
+  method: MatchMethod | null;
+  detail: string | null;
+}
+
+export interface MatchScan {
+  /** False while the document has no extracted text to check. */
+  textAvailable: boolean;
+  suggestions: ClaimMatch[];
+  linkedClaims: LinkedClaimCheck[];
+  aiAttempted: boolean;
+  aiFailed: boolean;
 }
 
 export interface DocumentQuery {

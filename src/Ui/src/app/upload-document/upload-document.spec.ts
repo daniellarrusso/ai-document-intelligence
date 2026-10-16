@@ -39,7 +39,7 @@ describe('UploadDocument', () => {
     await fixture.whenStable();
 
     expect(upload).toHaveBeenCalledWith(file);
-    expect(navigate).toHaveBeenCalledWith('/documents/abc123');
+    expect(navigate).toHaveBeenCalledWith('/documents/abc123?uploaded=1');
   });
 
   it('reports failure and keeps the file when the upload fails', async () => {
