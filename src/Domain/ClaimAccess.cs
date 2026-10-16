@@ -37,7 +37,18 @@ public static class ClaimAccess
         return false;
     }
 
-    // A document with no claim: Admins and Readers see it; a Handler sees only what they uploaded.
+    // Whether the user may delete a document: an unmatched document follows the standalone rule, a matched one
+    // needs the right to act on every claim it is linked to (deleting it removes it from all of them).
+    public static bool CanActOnDocument(CurrentUser user, Document document, IReadOnlyCollection<Claim> linkedClaims)
+    {
+        ArgumentNullException.ThrowIfNull(linkedClaims);
+
+        return linkedClaims.Count == 0
+            ? CanActOnStandaloneDocument(user, document)
+            : linkedClaims.All(claim => CanAct(user, claim));
+    }
+
+    // An unmatched document (linked to no claim): Admins and Readers see it; a Handler sees only what they uploaded.
     public static bool CanViewStandaloneDocument(CurrentUser user, Document document)
     {
         ArgumentNullException.ThrowIfNull(user);

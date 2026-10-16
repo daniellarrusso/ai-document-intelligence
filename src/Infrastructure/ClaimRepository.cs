@@ -85,8 +85,7 @@ public class ClaimRepository : IClaimRepository
                         Status = d.Status,
                         UploadedAt = d.UploadedAt,
                         ProcessedAt = d.ProcessedAt,
-                        Summary = d.Summary,
-                        ClaimId = d.ClaimId
+                        Summary = d.Summary
                     })
                     .ToList()
             })
@@ -113,5 +112,25 @@ public class ClaimRepository : IClaimRepository
         await _context.Claims
             .Where(c => c.Id == claimId)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsPrivate, isPrivate), cancellationToken);
+    }
+
+    public async Task<List<Claim>> GetClaimsForDocumentAsync(CurrentUser user, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Claims
+            .AsNoTracking()
+            .Include(c => c.AssignedToUser)
+            .Where(ClaimAccess.CanView(user))
+            .Where(c => _context.ClaimDocuments.Any(l => l.ClaimId == c.Id && l.DocumentId == documentId))
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Claim>> GetAllClaimsForDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Claims
+            .AsNoTracking()
+            .Where(c => _context.ClaimDocuments.Any(l => l.ClaimId == c.Id && l.DocumentId == documentId))
+            .ToListAsync(cancellationToken);
     }
 }

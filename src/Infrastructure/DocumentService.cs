@@ -24,9 +24,78 @@ public class DocumentService
         _userService = userService;
     }
 
-    public async Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    public const int MaxSearchLength = 100;
+
+    // Throws ArgumentException if the search text is too long. Blank search text means no text filter.
+    public Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, string? search = null, bool unmatchedOnly = false, CancellationToken cancellationToken = default)
     {
-        return await _documentRepository.GetDocumentsAsync(user, pageNumber, pageSize, cancellationToken);
+        var trimmedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        if (trimmedSearch?.Length > MaxSearchLength)
+        {
+            throw new ArgumentException($"Search text cannot exceed {MaxSearchLength} characters.");
+        }
+
+        return _documentRepository.GetDocumentsAsync(user, pageNumber, pageSize, trimmedSearch, unmatchedOnly, cancellationToken);
+    }
+
+    // The claims the document is linked to that the user may view. Null if the document doesn't exist or the
+    // user may not view it.
+    public async Task<List<Claim>?> GetLinkedClaimsAsync(CurrentUser user, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (await _documentRepository.GetDocumentForUserAsync(user, documentId, cancellationToken) == null)
+        {
+            return null;
+        }
+
+        return await _claimRepository.GetClaimsForDocumentAsync(user, documentId, cancellationToken);
+    }
+
+    // Links a document to a claim. NotFound if either is missing or not visible to the user (so existence isn't
+    // revealed); Forbidden if both are visible but the user may not act on the claim. Linking twice is fine.
+    public async Task<AccessOutcome> LinkToClaimAsync(CurrentUser user, Guid documentId, Guid claimId, CancellationToken cancellationToken = default)
+    {
+        var outcome = await AuthorizeLinkChangeAsync(user, documentId, claimId, cancellationToken);
+        if (outcome != AccessOutcome.Allowed)
+        {
+            return outcome;
+        }
+
+        // The foreign key needs the user row to exist, even if they never called /api/me.
+        await _userService.RecordSignInAsync(user, cancellationToken);
+        await _documentRepository.LinkToClaimAsync(documentId, claimId, user.Id, cancellationToken);
+
+        return AccessOutcome.Allowed;
+    }
+
+    // Same outcomes as LinkToClaimAsync. Unlinking a document that isn't linked is fine.
+    public async Task<AccessOutcome> UnlinkFromClaimAsync(CurrentUser user, Guid documentId, Guid claimId, CancellationToken cancellationToken = default)
+    {
+        var outcome = await AuthorizeLinkChangeAsync(user, documentId, claimId, cancellationToken);
+        if (outcome != AccessOutcome.Allowed)
+        {
+            return outcome;
+        }
+
+        await _documentRepository.UnlinkFromClaimAsync(documentId, claimId, cancellationToken);
+
+        return AccessOutcome.Allowed;
+    }
+
+    // Changing a link needs two things: sight of the document, and the right to act on the claim.
+    private async Task<AccessOutcome> AuthorizeLinkChangeAsync(CurrentUser user, Guid documentId, Guid claimId, CancellationToken cancellationToken)
+    {
+        if (await _documentRepository.GetDocumentForUserAsync(user, documentId, cancellationToken) == null)
+        {
+            return AccessOutcome.NotFound;
+        }
+
+        var claim = await _claimRepository.GetClaimAsync(user, claimId, cancellationToken);
+        if (claim == null)
+        {
+            return AccessOutcome.NotFound;
+        }
+
+        return ClaimAccess.CanAct(user, claim) ? AccessOutcome.Allowed : AccessOutcome.Forbidden;
     }
 
     // Null if the document doesn't exist or the user may not view it.
@@ -60,13 +129,12 @@ public class DocumentService
             FileSize = file.FileSize,
             UploadedAt = DateTime.UtcNow,
             Status = DocumentStatus.Uploaded,
-            ClaimId = claimId,
             UploadedByUserId = uploader.Id
         };
 
         // The foreign key needs the user row to exist, even if they never called /api/me.
         await _userService.RecordSignInAsync(uploader, cancellationToken);
-        await _documentRepository.CreateDocumentAsync(document, cancellationToken);
+        await _documentRepository.CreateDocumentAsync(document, claimId, uploader.Id, cancellationToken);
 
         // Queued for processing: mark Processing before enqueueing so the worker's result can't be overwritten.
         await _documentRepository.UpdateStatusAsync(documentId, DocumentStatus.Processing, null, cancellationToken);
@@ -86,10 +154,8 @@ public class DocumentService
             return AccessOutcome.NotFound;
         }
 
-        var canAct = document.ClaimId is { } claimId
-            ? await CanActOnClaimAsync(user, claimId, cancellationToken)
-            : ClaimAccess.CanActOnStandaloneDocument(user, document);
-        if (!canAct)
+        var linkedClaims = await _claimRepository.GetAllClaimsForDocumentAsync(id, cancellationToken);
+        if (!ClaimAccess.CanActOnDocument(user, document, linkedClaims))
         {
             return AccessOutcome.Forbidden;
         }
@@ -98,12 +164,5 @@ public class DocumentService
         await _documentRepository.DeleteDocumentAsync(id, cancellationToken);
 
         return AccessOutcome.Allowed;
-    }
-
-    private async Task<bool> CanActOnClaimAsync(CurrentUser user, Guid claimId, CancellationToken cancellationToken)
-    {
-        var claim = await _claimRepository.GetClaimAsync(user, claimId, cancellationToken);
-
-        return claim != null && ClaimAccess.CanAct(user, claim);
     }
 }

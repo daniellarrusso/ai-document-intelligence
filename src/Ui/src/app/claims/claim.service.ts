@@ -44,6 +44,16 @@ export class ClaimService {
     return this.http.post<ClaimDocument>(`${this.baseUrl}/${claimId}/documents`, formData);
   }
 
+  /** Links an existing document to the claim. The document can stay linked to other claims as well. */
+  linkDocument(claimId: string, documentId: string): Observable<void> {
+    return this.http.put<void>(`${this.baseUrl}/${claimId}/documents/${documentId}`, null);
+  }
+
+  /** Removes the link only; the document itself is kept (and becomes unmatched if this was its last claim). */
+  unlinkDocument(claimId: string, documentId: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${claimId}/documents/${documentId}`);
+  }
+
   /** The people a claim can be assigned to (Handlers and Admins only; the API refuses Readers). */
   getHandlers(): Observable<Handler[]> {
     return this.http.get<Handler[]>(`${environment.apiBaseUrl}/users/handlers`);

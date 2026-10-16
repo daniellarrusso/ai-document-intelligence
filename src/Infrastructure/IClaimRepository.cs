@@ -23,4 +23,12 @@ public interface IClaimRepository
 
     // The claim without its documents. Null if it does not exist or the user may not view it.
     Task<Claim?> GetClaimAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default);
+
+    // The claims a document is linked to that the user may view (newest first), with their assignee names.
+    // Does not check that the user may view the document itself.
+    Task<List<Claim>> GetClaimsForDocumentAsync(CurrentUser user, Guid documentId, CancellationToken cancellationToken = default);
+
+    // Every claim the document is linked to, regardless of who may view it. Only for authorisation decisions
+    // (such as "may this user delete the document"); never return the result to a caller.
+    Task<List<Claim>> GetAllClaimsForDocumentAsync(Guid documentId, CancellationToken cancellationToken = default);
 }

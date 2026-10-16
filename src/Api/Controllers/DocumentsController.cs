@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 [Authorize(Policy = AuthorizationPolicies.CanRead)]
 public class DocumentsController : ControllerBase
 {
+    private const int MaxPageSize = 100;
+
     private readonly ILogger<DocumentsController> _logger;
     private readonly DocumentService _documentService;
     private readonly IDocumentQuestionAnswerer _questionAnswerer;
@@ -21,15 +23,52 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet(Name = "GetDocuments")]
-    public async Task<IActionResult> Get(CancellationToken cancellationToken)
+    public async Task<IActionResult> Get(
+        CancellationToken cancellationToken,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? q = null,
+        [FromQuery] bool unmatched = false)
     {
         if (User.GetCurrentUser() is not { } user)
         {
             return Forbid();
         }
 
-        var documents = await _documentService.GetDocumentsAsync(user, cancellationToken: cancellationToken);
-        return Ok(documents);
+        if (pageNumber < 1 || pageSize < 1 || pageSize > MaxPageSize)
+        {
+            return BadRequest($"pageNumber must be at least 1 and pageSize must be between 1 and {MaxPageSize}.");
+        }
+
+        // The repository computes the offset as an int, so refuse pages that would overflow it.
+        if ((long)(pageNumber - 1) * pageSize > int.MaxValue)
+        {
+            return BadRequest("pageNumber is too large for the given pageSize.");
+        }
+
+        try
+        {
+            var documents = await _documentService.GetDocumentsAsync(user, pageNumber, pageSize, q, unmatched, cancellationToken);
+            return Ok(documents);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    // The claims this document is linked to that the caller may see (an empty list means unmatched).
+    [HttpGet("{id}/claims", Name = "GetDocumentClaims")]
+    public async Task<IActionResult> GetClaims(Guid id, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var claims = await _documentService.GetLinkedClaimsAsync(user, id, cancellationToken);
+
+        return claims == null ? NotFound() : Ok(claims.Select(ClaimResponse.From));
     }
 
     [HttpGet("{id}", Name = "GetDocumentById")]

@@ -110,19 +110,20 @@ public class ClaimAccessApiTests : IDisposable
         using var response = await client.PostAsync($"/api/claims/{ClaimId}/documents", File());
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        _factory.Documents.Verify(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()), Times.Never);
+        _factory.Documents.Verify(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task UploadClaimDocument_OwnClaim_RecordsUploader()
     {
         Document? saved = null;
+        Guid? savedClaimId = null;
         _factory.Claims
             .Setup(r => r.GetClaimAsync(It.IsAny<CurrentUser>(), ClaimId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Claim { Id = ClaimId, AssignedToUserId = TestAuthHandler.OidFor("handler-d") });
         _factory.Documents
-            .Setup(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Callback<Document, CancellationToken>((d, _) => saved = d)
+            .Setup(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback<Document, Guid?, Guid?, CancellationToken>((d, claimId, _, _) => { saved = d; savedClaimId = claimId; })
             .ReturnsAsync(Guid.NewGuid());
         using var client = ClientFor("handler-d", AppRoles.Handler);
 
@@ -130,8 +131,109 @@ public class ClaimAccessApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(saved);
-        Assert.Equal(ClaimId, saved.ClaimId);
+        Assert.Equal(ClaimId, savedClaimId);
         Assert.Equal(TestAuthHandler.OidFor("handler-d"), saved.UploadedByUserId);
+    }
+
+    [Fact]
+    public async Task LinkDocument_OwnClaimAndVisibleDocument_LinksAndReturnsNoContent()
+    {
+        var handler = TestAuthHandler.OidFor("handler-f");
+        _factory.Claims
+            .Setup(r => r.GetClaimAsync(It.IsAny<CurrentUser>(), ClaimId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Claim { Id = ClaimId, AssignedToUserId = handler });
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Document { Id = DocumentId });
+        using var client = ClientFor("handler-f", AppRoles.Handler);
+
+        using var response = await client.PutAsync($"/api/claims/{ClaimId}/documents/{DocumentId}", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        _factory.Documents.Verify(r => r.LinkToClaimAsync(DocumentId, ClaimId, handler, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LinkDocument_ClaimVisibleButAssignedToSomeoneElse_ReturnsForbidden()
+    {
+        // Visible (so not a 404) but assigned elsewhere: a Handler can't act on it.
+        _factory.Claims
+            .Setup(r => r.GetClaimAsync(It.IsAny<CurrentUser>(), ClaimId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Claim { Id = ClaimId, AssignedToUserId = Guid.NewGuid() });
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Document { Id = DocumentId });
+        using var client = ClientFor("handler-g", AppRoles.Handler);
+
+        using var response = await client.PutAsync($"/api/claims/{ClaimId}/documents/{DocumentId}", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _factory.Documents.Verify(r => r.LinkToClaimAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LinkDocument_DocumentNotVisibleToCaller_ReturnsNotFound()
+    {
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Document?)null);
+        using var client = ClientFor("handler-h", AppRoles.Handler);
+
+        using var response = await client.PutAsync($"/api/claims/{ClaimId}/documents/{DocumentId}", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnlinkDocument_AsAdmin_RemovesLinkAndReturnsNoContent()
+    {
+        _factory.Claims
+            .Setup(r => r.GetClaimAsync(It.IsAny<CurrentUser>(), ClaimId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Claim { Id = ClaimId, AssignedToUserId = Guid.NewGuid() });
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Document { Id = DocumentId });
+        using var client = ClientFor("admin-b", AppRoles.Admin);
+
+        using var response = await client.DeleteAsync($"/api/claims/{ClaimId}/documents/{DocumentId}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        _factory.Documents.Verify(r => r.UnlinkFromClaimAsync(DocumentId, ClaimId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDocumentClaims_DocumentNotVisibleToCaller_ReturnsNotFound()
+    {
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Document?)null);
+        using var client = ClientFor("reader-c", AppRoles.Reader);
+
+        using var response = await client.GetAsync($"/api/documents/{DocumentId}/claims");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetDocuments_Unmatched_PassesFilterAndSearchToTheRepository()
+    {
+        using var client = ClientFor("admin-c", AppRoles.Admin);
+
+        using var response = await client.GetAsync("/api/documents?unmatched=true&q=%20invoice%20&pageSize=5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _factory.Documents.Verify(r => r.GetDocumentsAsync(
+            It.IsAny<CurrentUser>(), 1, 5, "invoice", true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDocuments_PageSizeTooLarge_ReturnsBadRequest()
+    {
+        using var client = ClientFor("admin-d", AppRoles.Admin);
+
+        using var response = await client.GetAsync("/api/documents?pageSize=101");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

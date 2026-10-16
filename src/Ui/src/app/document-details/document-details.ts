@@ -1,6 +1,10 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, DestroyRef, afterNextRender, computed, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Observable } from 'rxjs';
+import { Claim } from '../claims/claim.model';
+import { ClaimService } from '../claims/claim.service';
 import {
   AnswerSource,
   DocumentStatus,
@@ -13,6 +17,7 @@ import { UserService } from '../auth/user.service';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_QUESTION_LENGTH = 1000;
+const CLAIM_SEARCH_PAGE_SIZE = 10;
 
 export type StepState = 'done' | 'current' | 'pending';
 
@@ -23,6 +28,7 @@ export type StepState = 'done' | 'current' | 'pending';
 })
 export class DocumentDetails {
   private readonly documentService = inject(DocumentService);
+  private readonly claimService = inject(ClaimService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   protected readonly user = inject(UserService);
@@ -37,12 +43,28 @@ export class DocumentDetails {
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
 
-  // Documents that belong to a claim lead back to it rather than to the global document list.
-  protected readonly backLink = computed(() => {
-    const claimId = this.document()?.claimId;
-    return claimId
-      ? { commands: ['/claims', claimId], label: 'Back to claim' }
-      : { commands: ['/'], label: 'Back to documents' };
+  // Opened from a claim (the claim page adds ?claim=<id>), the page leads back to that claim rather than to
+  // the global document list.
+  private readonly fromClaimId = this.route.snapshot.queryParamMap.get('claim');
+  protected readonly backLink = this.fromClaimId
+    ? { url: `/claims/${this.fromClaimId}`, label: 'Back to claim' }
+    : { url: '/', label: 'Back to documents' };
+
+  /** The claims this document is linked to that the caller can see; empty means it is unmatched. */
+  protected readonly linkedClaims = signal<Claim[]>([]);
+  protected readonly claimsLoaded = signal(false);
+  protected readonly claimSearch = signal('');
+  /** Search results (claims the caller can see); null until a search has been run. */
+  protected readonly claimResults = signal<Claim[] | null>(null);
+  protected readonly claimSearching = signal(false);
+  protected readonly claimSearchError = signal('');
+  protected readonly linkingIds = signal<ReadonlySet<string>>(new Set());
+  protected readonly linkError = signal('');
+
+  /** Search results minus the claims the document is already linked to. */
+  protected readonly linkableClaims = computed(() => {
+    const linked = new Set(this.linkedClaims().map((c) => c.id));
+    return (this.claimResults() ?? []).filter((c) => !linked.has(c.id));
   });
 
   protected readonly maxQuestionLength = MAX_QUESTION_LENGTH;
@@ -71,7 +93,10 @@ export class DocumentDetails {
     inject(DestroyRef).onDestroy(() => clearTimeout(this.pollTimer));
 
     // Browser only (avoids calling the API during SSR).
-    afterNextRender(() => this.load());
+    afterNextRender(() => {
+      this.load();
+      this.loadClaims();
+    });
   }
 
   private load(): void {
@@ -92,6 +117,100 @@ export class DocumentDetails {
         this.error.set(err.status === 404 ? 'Document not found.' : 'Unable to load document.');
         this.loading.set(false);
       },
+    });
+  }
+
+  private loadClaims(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (!id) {
+      return;
+    }
+
+    this.documentService.getClaims(id).subscribe({
+      next: (claims) => {
+        this.linkedClaims.set(claims);
+        this.claimsLoaded.set(true);
+      },
+      error: (err: { status?: number }) => {
+        if (err.status === 404) {
+          // After unlinking, a handler may no longer be allowed to see this document at all.
+          void this.router.navigateByUrl(this.backLink.url);
+        }
+      },
+    });
+  }
+
+  protected onClaimSearchInput(event: Event): void {
+    this.claimSearch.set((event.target as HTMLInputElement).value);
+  }
+
+  /** Finds claims by reference, policy number or claimant name. The API only returns claims the caller can see. */
+  protected searchClaims(): void {
+    if (this.claimSearching()) {
+      return;
+    }
+
+    this.claimSearching.set(true);
+    this.claimSearchError.set('');
+
+    this.claimService
+      .getClaims({ search: this.claimSearch().trim(), pageNumber: 1, pageSize: CLAIM_SEARCH_PAGE_SIZE })
+      .subscribe({
+        next: (claims) => {
+          this.claimResults.set(claims);
+          this.claimSearching.set(false);
+        },
+        error: () => {
+          this.claimSearchError.set('Unable to search claims.');
+          this.claimSearching.set(false);
+        },
+      });
+  }
+
+  protected linkToClaim(claimId: string): void {
+    this.changeLink(claimId, (documentId) => this.claimService.linkDocument(claimId, documentId));
+  }
+
+  protected unlinkFromClaim(claimId: string): void {
+    this.changeLink(claimId, (documentId) => this.claimService.unlinkDocument(claimId, documentId));
+  }
+
+  private changeLink(claimId: string, request: (documentId: string) => Observable<void>): void {
+    const documentId = this.document()?.id;
+    if (!documentId || this.linkingIds().has(claimId)) {
+      return;
+    }
+
+    this.setLinking(claimId, true);
+    this.linkError.set('');
+
+    request(documentId).subscribe({
+      next: () => {
+        this.setLinking(claimId, false);
+        this.loadClaims();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.setLinking(claimId, false);
+        this.linkError.set(
+          err.status === 404
+            ? 'That document or claim is no longer available.'
+            : err.status === 403
+              ? 'You do not have permission to change this claim.'
+              : 'Unable to update the claim link.',
+        );
+      },
+    });
+  }
+
+  private setLinking(claimId: string, linking: boolean): void {
+    this.linkingIds.update((ids) => {
+      const next = new Set(ids);
+      if (linking) {
+        next.add(claimId);
+      } else {
+        next.delete(claimId);
+      }
+      return next;
     });
   }
 
@@ -128,7 +247,7 @@ export class DocumentDetails {
     this.deleteError.set('');
 
     this.documentService.delete(document.id).subscribe({
-      next: () => void this.router.navigateByUrl(document.claimId ? `/claims/${document.claimId}` : '/'),
+      next: () => void this.router.navigateByUrl(this.backLink.url),
       error: () => {
         this.deleteError.set('Unable to delete the document. Please try again.');
         this.deleting.set(false);

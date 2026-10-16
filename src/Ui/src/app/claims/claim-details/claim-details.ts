@@ -1,14 +1,22 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, DestroyRef, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { Observable } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { DocumentStatus, documentStatusLabel, isDocumentInProgress } from '../../document-list/document.model';
+import {
+  DocumentStatus,
+  DocumentSummary,
+  documentStatusLabel,
+  isDocumentInProgress,
+} from '../../document-list/document.model';
+import { DocumentService } from '../../document-list/document.service';
 import { formatFileSize } from '../../shared/format-file-size';
 import { UserService } from '../../auth/user.service';
 import { ClaimDetail, ClaimStatus, Handler, claimStatusLabel } from '../claim.model';
 import { ClaimService } from '../claim.service';
 
 const POLL_INTERVAL_MS = 2000;
+const MATCH_PAGE_SIZE = 10;
 
 @Component({
   selector: 'app-claim-details',
@@ -17,6 +25,7 @@ const POLL_INTERVAL_MS = 2000;
 })
 export class ClaimDetails {
   private readonly claimService = inject(ClaimService);
+  private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   protected readonly user = inject(UserService);
@@ -33,6 +42,15 @@ export class ClaimDetails {
   protected readonly selectedFile = signal<File | null>(null);
   protected readonly uploading = signal(false);
   protected readonly uploadError = signal('');
+
+  /** Searching unmatched documents to link to this claim; null until a search has been run. */
+  protected readonly matchSearch = signal('');
+  protected readonly matchResults = signal<DocumentSummary[] | null>(null);
+  protected readonly matchSearching = signal(false);
+  protected readonly matchError = signal('');
+  /** Ids of documents being linked or unlinked right now, so their buttons can be disabled. */
+  protected readonly linkingIds = signal<ReadonlySet<string>>(new Set());
+  protected readonly linkError = signal('');
 
   protected readonly handlers = signal<Handler[]>([]);
   protected readonly handlersError = signal(false);
@@ -207,6 +225,89 @@ export class ClaimDetails {
         this.uploadError.set('File upload failed!');
         this.uploading.set(false);
       },
+    });
+  }
+
+  protected onMatchSearchInput(event: Event): void {
+    this.matchSearch.set((event.target as HTMLInputElement).value);
+  }
+
+  /** Lists unmatched documents whose file name contains the search text (all of them if it is blank). */
+  protected searchUnmatched(): void {
+    if (this.matchSearching()) {
+      return;
+    }
+
+    this.matchSearching.set(true);
+    this.matchError.set('');
+
+    this.documentService
+      .searchDocuments({
+        search: this.matchSearch().trim(),
+        unmatched: true,
+        pageNumber: 1,
+        pageSize: MATCH_PAGE_SIZE,
+      })
+      .subscribe({
+        next: (documents) => {
+          this.matchResults.set(documents);
+          this.matchSearching.set(false);
+        },
+        error: () => {
+          this.matchError.set('Unable to search documents.');
+          this.matchSearching.set(false);
+        },
+      });
+  }
+
+  protected linkDocument(documentId: string): void {
+    this.changeLink(documentId, (claimId) => this.claimService.linkDocument(claimId, documentId), () => {
+      // It is no longer unmatched, so drop it from the results.
+      this.matchResults.update((results) => results?.filter((d) => d.id !== documentId) ?? null);
+    });
+  }
+
+  protected unlinkDocument(documentId: string): void {
+    this.changeLink(documentId, (claimId) => this.claimService.unlinkDocument(claimId, documentId));
+  }
+
+  private changeLink(documentId: string, request: (claimId: string) => Observable<void>, onDone?: () => void): void {
+    const claimId = this.detail()?.claim.id;
+    if (!claimId || this.linkingIds().has(documentId)) {
+      return;
+    }
+
+    this.setLinking(documentId, true);
+    this.linkError.set('');
+
+    request(claimId).subscribe({
+      next: () => {
+        this.setLinking(documentId, false);
+        onDone?.();
+        this.load();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.setLinking(documentId, false);
+        this.linkError.set(
+          err.status === 404
+            ? 'That document or claim is no longer available.'
+            : err.status === 403
+              ? 'You do not have permission to change this claim.'
+              : 'Unable to update the document link.',
+        );
+      },
+    });
+  }
+
+  private setLinking(documentId: string, linking: boolean): void {
+    this.linkingIds.update((ids) => {
+      const next = new Set(ids);
+      if (linking) {
+        next.add(documentId);
+      } else {
+        next.delete(documentId);
+      }
+      return next;
     });
   }
 

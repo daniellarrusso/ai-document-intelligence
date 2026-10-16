@@ -4,6 +4,8 @@ import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { UserService } from '../auth/user.service';
+import { Claim, ClaimStatus } from '../claims/claim.model';
+import { ClaimService } from '../claims/claim.service';
 import { DocumentStatus, DocumentSummary } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { DocumentDetails } from './document-details';
@@ -20,14 +22,42 @@ const sample: DocumentSummary = {
   summary: 'A brief report about hello world.',
 };
 
-async function render(service: Partial<Record<'getDocument' | 'delete' | 'ask', unknown>>, canWrite = true) {
+const claim: Claim = {
+  id: 'claim-1',
+  reference: 'CLM-20260901-AAAA1111',
+  policyNumber: 'POL-1',
+  claimantName: 'Jane Doe',
+  incidentDate: '2026-09-01',
+  amountClaimed: 1500,
+  status: ClaimStatus.Open,
+  assignedToUserId: 'sam-id',
+  assignedToName: 'Sam Handler',
+  isPrivate: false,
+  createdAt: '2026-09-02T09:00:00Z',
+};
+
+const otherClaim: Claim = { ...claim, id: 'claim-2', reference: 'CLM-20260902-BBBB2222', claimantName: 'John Roe' };
+
+type DocumentApi = Partial<Record<'getDocument' | 'delete' | 'ask' | 'getClaims', unknown>>;
+type ClaimApi = Partial<Record<'getClaims' | 'linkDocument' | 'unlinkDocument', unknown>>;
+
+async function render(service: DocumentApi, canWrite = true, claimApi: ClaimApi = {}, fromClaim: string | null = null) {
   await TestBed.configureTestingModule({
     imports: [DocumentDetails],
     providers: [
       provideRouter([]),
-      { provide: DocumentService, useValue: service },
+      { provide: DocumentService, useValue: { getClaims: () => of([]), ...service } },
+      { provide: ClaimService, useValue: claimApi },
       { provide: UserService, useValue: { canWrite: signal(canWrite) } },
-      { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'abc']]) } } },
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          snapshot: {
+            paramMap: new Map([['id', 'abc']]),
+            queryParamMap: new Map(fromClaim ? [['claim', fromClaim]] : []),
+          },
+        },
+      },
     ],
   }).compileComponents();
 
@@ -111,8 +141,12 @@ describe('DocumentDetails', () => {
         imports: [DocumentDetails],
         providers: [
           provideRouter([]),
-          { provide: DocumentService, useValue: { getDocument } },
-          { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'abc']]) } } },
+          { provide: DocumentService, useValue: { getDocument, getClaims: () => of([]) } },
+          { provide: ClaimService, useValue: {} },
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { paramMap: new Map([['id', 'abc']]), queryParamMap: new Map() } },
+          },
         ],
       }).compileComponents();
       const fixture = TestBed.createComponent(DocumentDetails);
@@ -171,17 +205,17 @@ describe('DocumentDetails', () => {
     expect(back.getAttribute('href')).toBe('/');
   });
 
-  it('links back to the claim when the document belongs to one', async () => {
-    const { el } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }) });
+  it('links back to the claim when opened from one', async () => {
+    const { el } = await render({ getDocument: () => of(sample) }, true, {}, 'claim-1');
 
     const back = el.querySelector<HTMLAnchorElement>('a')!;
     expect(back.textContent).toContain('Back to claim');
     expect(back.getAttribute('href')).toBe('/claims/claim-1');
   });
 
-  it('returns to the claim after deleting one of its documents', async () => {
+  it('returns to the claim after deleting a document opened from it', async () => {
     const del = vi.fn(() => of(undefined));
-    const { click } = await render({ getDocument: () => of({ ...sample, claimId: 'claim-1' }), delete: del });
+    const { click } = await render({ getDocument: () => of(sample), delete: del }, true, {}, 'claim-1');
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
     await click('button', 'Delete');
@@ -326,6 +360,114 @@ describe('DocumentDetails', () => {
       await click('form button[type="submit"]');
       expect(el.querySelector('form + [role="alert"]')).toBeNull();
       expect(el.textContent).toContain('Flooding is excluded [1].');
+    });
+  });
+
+  describe('claim links', () => {
+    const linked = (...claims: Claim[]) => ({ getDocument: () => of(sample), getClaims: () => of(claims) });
+
+    const search = async (el: HTMLElement, fixture: { whenStable: () => Promise<unknown> }, text = '') => {
+      const input = el.querySelector<HTMLInputElement>('#claim-search')!;
+      input.value = text;
+      input.dispatchEvent(new Event('input'));
+      el.querySelector<HTMLFormElement>('details form')!.dispatchEvent(new Event('submit'));
+      await fixture.whenStable();
+    };
+
+    it('says the document is unmatched when it has no claims', async () => {
+      const { el } = await render(linked());
+
+      expect(el.textContent).toContain('Not linked to any claim yet.');
+    });
+
+    it('lists the linked claims, each linking to the claim', async () => {
+      const { el } = await render(linked(claim, otherClaim));
+
+      const hrefs = Array.from(el.querySelectorAll<HTMLAnchorElement>('a[href^="/claims/"]')).map((a) =>
+        a.getAttribute('href'),
+      );
+      expect(hrefs).toEqual(['/claims/claim-1', '/claims/claim-2']);
+    });
+
+    it('unlinks a claim and refreshes the list', async () => {
+      const unlinkDocument = vi.fn(() => of(undefined));
+      const getClaims = vi.fn().mockReturnValueOnce(of([claim, otherClaim])).mockReturnValue(of([otherClaim]));
+      const { el, fixture } = await render({ getDocument: () => of(sample), getClaims }, true, { unlinkDocument });
+
+      el.querySelector<HTMLButtonElement>(`button[aria-label="Unlink from ${claim.reference}"]`)!.click();
+      await fixture.whenStable();
+
+      expect(unlinkDocument).toHaveBeenCalledWith('claim-1', 'abc');
+      expect(getClaims).toHaveBeenCalledTimes(2);
+      expect(el.textContent).not.toContain(claim.reference);
+      expect(el.textContent).toContain(otherClaim.reference);
+    });
+
+    it('searches claims and offers only those not already linked', async () => {
+      const getClaims = vi.fn(() => of([claim, otherClaim]));
+      const { el, fixture } = await render(linked(claim), true, { getClaims });
+
+      await search(el, fixture, 'doe');
+
+      expect(getClaims).toHaveBeenCalledWith({ search: 'doe', pageNumber: 1, pageSize: 10 });
+      const links = Array.from(el.querySelectorAll('details button[aria-label^="Link to"]'));
+      expect(links.map((b) => b.getAttribute('aria-label'))).toEqual([`Link to ${otherClaim.reference}`]);
+    });
+
+    it('links the document to the chosen claim and shows it under Claims', async () => {
+      const linkDocument = vi.fn(() => of(undefined));
+      const getDocClaims = vi.fn().mockReturnValueOnce(of([])).mockReturnValue(of([otherClaim]));
+      const { el, fixture } = await render({ getDocument: () => of(sample), getClaims: getDocClaims }, true, {
+        getClaims: () => of([otherClaim]),
+        linkDocument,
+      });
+      await search(el, fixture);
+
+      el.querySelector<HTMLButtonElement>(`details button[aria-label="Link to ${otherClaim.reference}"]`)!.click();
+      await fixture.whenStable();
+
+      expect(linkDocument).toHaveBeenCalledWith('claim-2', 'abc');
+      expect(el.querySelector('ul a[href="/claims/claim-2"]')).not.toBeNull();
+    });
+
+    it('shows an error when the API refuses the link', async () => {
+      const linkDocument = vi.fn(() => throwError(() => ({ status: 403 })));
+      const { el, fixture } = await render(linked(), true, { getClaims: () => of([claim]), linkDocument });
+      await search(el, fixture);
+
+      el.querySelector<HTMLButtonElement>('details button[aria-label^="Link to"]')!.click();
+      await fixture.whenStable();
+
+      expect(el.textContent).toContain('You do not have permission to change this claim.');
+    });
+
+    it('reports a failed claim search', async () => {
+      const { el, fixture } = await render(linked(), true, { getClaims: () => throwError(() => ({ status: 500 })) });
+
+      await search(el, fixture);
+
+      expect(el.textContent).toContain('Unable to search claims.');
+    });
+
+    it('leaves the page when the document is no longer visible after a change', async () => {
+      const getClaims = vi.fn().mockReturnValueOnce(of([claim])).mockReturnValue(throwError(() => ({ status: 404 })));
+      const { el, fixture } = await render({ getDocument: () => of(sample), getClaims }, true, {
+        unlinkDocument: () => of(undefined),
+      });
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+      el.querySelector<HTMLButtonElement>(`button[aria-label="Unlink from ${claim.reference}"]`)!.click();
+      await fixture.whenStable();
+
+      expect(navigate).toHaveBeenCalledWith('/');
+    });
+
+    it('offers no linking controls to a read-only user', async () => {
+      const { el } = await render(linked(claim), false);
+
+      expect(el.textContent).toContain(claim.reference);
+      expect(el.querySelector('details')).toBeNull();
+      expect(el.querySelector('button[aria-label^="Unlink"]')).toBeNull();
     });
   });
 });

@@ -143,6 +143,39 @@ public class ClaimsController : ControllerBase
         };
     }
 
+    // Links an existing document to this claim. Idempotent. The document can stay linked to other claims too.
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [HttpPut("{id}/documents/{documentId}", Name = "LinkClaimDocument")]
+    public async Task<IActionResult> LinkDocument(Guid id, Guid documentId, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        return ToResult(await _documentService.LinkToClaimAsync(user, documentId, id, cancellationToken));
+    }
+
+    // Removes the link between this claim and the document; the document itself is kept.
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [HttpDelete("{id}/documents/{documentId}", Name = "UnlinkClaimDocument")]
+    public async Task<IActionResult> UnlinkDocument(Guid id, Guid documentId, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        return ToResult(await _documentService.UnlinkFromClaimAsync(user, documentId, id, cancellationToken));
+    }
+
+    private IActionResult ToResult(AccessOutcome outcome) => outcome switch
+    {
+        AccessOutcome.Allowed => NoContent(),
+        AccessOutcome.Forbidden => Forbid(),
+        _ => NotFound()
+    };
+
     [Authorize(Policy = AuthorizationPolicies.CanWrite)]
     [HttpPost("{id}/documents", Name = "UploadClaimDocument")]
     public async Task<IActionResult> UploadDocument(Guid id, [FromForm] IFormFile file, CancellationToken cancellationToken)

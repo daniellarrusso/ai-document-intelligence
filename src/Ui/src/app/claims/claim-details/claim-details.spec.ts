@@ -5,7 +5,8 @@ import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { UserService } from '../../auth/user.service';
-import { DocumentStatus } from '../../document-list/document.model';
+import { DocumentStatus, DocumentSummary } from '../../document-list/document.model';
+import { DocumentService } from '../../document-list/document.service';
 import { ClaimDetail, ClaimDocument, ClaimStatus, Handler } from '../claim.model';
 import { ClaimService } from '../claim.service';
 import { ClaimDetails } from './claim-details';
@@ -44,15 +45,25 @@ const handlers: Handler[] = [
 ];
 
 type Service = Partial<
-  Record<'getClaim' | 'uploadDocument' | 'getHandlers' | 'assignClaim' | 'setPrivacy', unknown>
+  Record<
+    'getClaim' | 'uploadDocument' | 'getHandlers' | 'assignClaim' | 'setPrivacy' | 'linkDocument' | 'unlinkDocument',
+    unknown
+  >
 >;
 
-async function render(service: Service, settle = true, canWrite = true, isAdmin = false) {
+async function render(
+  service: Service,
+  settle = true,
+  canWrite = true,
+  isAdmin = false,
+  documentApi: Partial<Record<'searchDocuments', unknown>> = {},
+) {
   await TestBed.configureTestingModule({
     imports: [ClaimDetails],
     providers: [
       provideRouter([]),
       { provide: ClaimService, useValue: { getHandlers: () => of(handlers), ...service } },
+      { provide: DocumentService, useValue: documentApi },
       { provide: UserService, useValue: { canWrite: signal(canWrite), isAdmin: signal(isAdmin) } },
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: new Map([['id', 'claim-1']]) } } },
     ],
@@ -91,7 +102,8 @@ describe('ClaimDetails', () => {
 
     const link = el.querySelector<HTMLAnchorElement>('tbody a')!;
     expect(link.textContent?.trim()).toBe('report.pdf');
-    expect(link.getAttribute('href')).toBe('/documents/doc-1');
+    // The claim id rides along so the document page can lead back to this claim.
+    expect(link.getAttribute('href')).toBe('/documents/doc-1?claim=claim-1');
     expect(el.querySelector('tbody')?.textContent).toContain('2.0 KB');
     expect(el.querySelector('tbody')?.textContent).toContain('Complete');
   });
@@ -372,6 +384,119 @@ describe('ClaimDetails', () => {
       const { el } = await render({ getClaim: () => of(privateDetail) }, true, false);
 
       expect(el.textContent).toContain('Private');
+    });
+  });
+
+  describe('document links', () => {
+    const unmatched: DocumentSummary[] = [
+      {
+        id: 'doc-9',
+        fileName: 'invoice.pdf',
+        contentType: 'application/pdf',
+        fileSize: 100,
+        status: DocumentStatus.Completed,
+        uploadedAt: '2026-09-03T10:00:00Z',
+        processedAt: null,
+        extractedText: null,
+        summary: null,
+      },
+    ];
+
+    const search = async (el: HTMLElement, fixture: { whenStable: () => Promise<unknown> }, text = '') => {
+      const input = el.querySelector<HTMLInputElement>('#match-search')!;
+      input.value = text;
+      input.dispatchEvent(new Event('input'));
+      el.querySelector<HTMLFormElement>('details form')!.dispatchEvent(new Event('submit'));
+      await fixture.whenStable();
+    };
+
+    it('searches only unmatched documents', async () => {
+      const searchDocuments = vi.fn(() => of(unmatched));
+      const { el, fixture } = await render({ getClaim: () => of(detail) }, true, true, false, { searchDocuments });
+
+      await search(el, fixture, ' invoice ');
+
+      expect(searchDocuments).toHaveBeenCalledWith({ search: 'invoice', unmatched: true, pageNumber: 1, pageSize: 10 });
+      expect(el.querySelector('details')?.textContent).toContain('invoice.pdf');
+    });
+
+    it('says when there are no unmatched documents', async () => {
+      const { el, fixture } = await render({ getClaim: () => of(detail) }, true, true, false, {
+        searchDocuments: () => of([]),
+      });
+
+      await search(el, fixture);
+
+      expect(el.querySelector('details')?.textContent).toContain('No unmatched documents found.');
+    });
+
+    it('links a found document, reloads the claim and drops it from the results', async () => {
+      const linkDocument = vi.fn(() => of(undefined));
+      const getClaim = vi.fn(() => of(detail));
+      const { el, fixture } = await render({ getClaim, linkDocument }, true, true, false, {
+        searchDocuments: () => of(unmatched),
+      });
+      await search(el, fixture);
+
+      el.querySelector<HTMLButtonElement>('button[aria-label="Link invoice.pdf to this claim"]')!.click();
+      await fixture.whenStable();
+
+      expect(linkDocument).toHaveBeenCalledWith('claim-1', 'doc-9');
+      expect(getClaim).toHaveBeenCalledTimes(2);
+      expect(el.querySelector('details')?.textContent).not.toContain('invoice.pdf');
+    });
+
+    it('keeps the result and shows an error when linking fails', async () => {
+      const linkDocument = vi.fn(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+      const { el, fixture } = await render({ getClaim: () => of(detail), linkDocument }, true, true, false, {
+        searchDocuments: () => of(unmatched),
+      });
+      await search(el, fixture);
+
+      el.querySelector<HTMLButtonElement>('button[aria-label="Link invoice.pdf to this claim"]')!.click();
+      await fixture.whenStable();
+
+      expect(el.textContent).toContain('That document or claim is no longer available.');
+      expect(el.querySelector('details')?.textContent).toContain('invoice.pdf');
+    });
+
+    it('reports a failed search', async () => {
+      const { el, fixture } = await render({ getClaim: () => of(detail) }, true, true, false, {
+        searchDocuments: () => throwError(() => new HttpErrorResponse({ status: 500 })),
+      });
+
+      await search(el, fixture);
+
+      expect(el.textContent).toContain('Unable to search documents.');
+    });
+
+    it('unlinks a document and reloads the claim', async () => {
+      const unlinkDocument = vi.fn(() => of(undefined));
+      const getClaim = vi.fn(() => of(detail));
+      const { el, fixture } = await render({ getClaim, unlinkDocument });
+
+      el.querySelector<HTMLButtonElement>('button[aria-label="Unlink report.pdf from this claim"]')!.click();
+      await fixture.whenStable();
+
+      expect(unlinkDocument).toHaveBeenCalledWith('claim-1', 'doc-1');
+      expect(getClaim).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows a permission error when unlinking is forbidden', async () => {
+      const unlinkDocument = vi.fn(() => throwError(() => new HttpErrorResponse({ status: 403 })));
+      const { el, fixture } = await render({ getClaim: () => of(detail), unlinkDocument });
+
+      el.querySelector<HTMLButtonElement>('button[aria-label="Unlink report.pdf from this claim"]')!.click();
+      await fixture.whenStable();
+
+      expect(el.textContent).toContain('You do not have permission to change this claim.');
+    });
+
+    it('offers no linking or unlinking to a read-only user', async () => {
+      const { el } = await render({ getClaim: () => of(detail) }, true, false);
+
+      expect(el.querySelector('details')).toBeNull();
+      expect(el.querySelector('button[aria-label^="Unlink"]')).toBeNull();
     });
   });
 });

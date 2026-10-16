@@ -1,8 +1,9 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { Claim } from '../claims/claim.model';
 import { environment } from '../../environments/environment';
-import { DocumentAnswer, DocumentSummary } from './document.model';
+import { DocumentAnswer, DocumentQuery, DocumentSummary } from './document.model';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -15,6 +16,24 @@ export class DocumentService {
 
   getDocuments(): Observable<DocumentSummary[]> {
     return this.http.get<DocumentSummary[]>(this.baseUrl);
+  }
+
+  /** Searches the documents the caller may see; `unmatched` restricts it to documents not linked to any claim. */
+  searchDocuments(query: DocumentQuery): Observable<DocumentSummary[]> {
+    let params = new HttpParams().set('pageNumber', query.pageNumber).set('pageSize', query.pageSize);
+    if (query.search) {
+      params = params.set('q', query.search);
+    }
+    if (query.unmatched) {
+      params = params.set('unmatched', true);
+    }
+
+    return this.http.get<DocumentSummary[]>(this.baseUrl, { params });
+  }
+
+  /** The claims this document is linked to that the caller may see; empty means the document is unmatched. */
+  getClaims(id: string): Observable<Claim[]> {
+    return this.http.get<Claim[]>(`${this.baseUrl}/${id}/claims`);
   }
 
   getDocument(id: string): Observable<DocumentSummary> {

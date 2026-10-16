@@ -11,12 +11,44 @@ public class DocumentRepository : IDocumentRepository
         _context = context;
     }
 
-    public async Task<Guid> CreateDocumentAsync(Document document, CancellationToken cancellationToken = default)
+    public async Task<Guid> CreateDocumentAsync(Document document, Guid? claimId = null, Guid? linkedByUserId = null, CancellationToken cancellationToken = default)
     {
         _context.Documents.Add(document);
+        if (claimId is { } id)
+        {
+            _context.ClaimDocuments.Add(NewLink(document.Id, id, linkedByUserId));
+        }
+
+        // One SaveChanges is one transaction: the document and its link are saved together or not at all.
         await _context.SaveChangesAsync(cancellationToken);
         return document.Id;
     }
+
+    public async Task LinkToClaimAsync(Guid documentId, Guid claimId, Guid linkedByUserId, CancellationToken cancellationToken = default)
+    {
+        if (await _context.ClaimDocuments.AnyAsync(l => l.DocumentId == documentId && l.ClaimId == claimId, cancellationToken))
+        {
+            return;
+        }
+
+        _context.ClaimDocuments.Add(NewLink(documentId, claimId, linkedByUserId));
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UnlinkFromClaimAsync(Guid documentId, Guid claimId, CancellationToken cancellationToken = default)
+    {
+        await _context.ClaimDocuments
+            .Where(l => l.DocumentId == documentId && l.ClaimId == claimId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    private static ClaimDocument NewLink(Guid documentId, Guid claimId, Guid? linkedByUserId) => new()
+    {
+        DocumentId = documentId,
+        ClaimId = claimId,
+        LinkedAt = DateTime.UtcNow,
+        LinkedByUserId = linkedByUserId
+    };
 
     public async Task DeleteDocumentAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -90,9 +122,21 @@ public class DocumentRepository : IDocumentRepository
         return await VisibleTo(user).FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
     }
 
-    public async Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+    public async Task<List<Document>> GetDocumentsAsync(CurrentUser user, int pageNumber = 1, int pageSize = 10, string? search = null, bool unmatchedOnly = false, CancellationToken cancellationToken = default)
     {
-        return await VisibleTo(user)
+        var query = VisibleTo(user);
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(d => EF.Functions.ILike(d.FileName, $"%{EscapeLikePattern(search)}%", LikeEscape));
+        }
+
+        if (unmatchedOnly)
+        {
+            query = query.Where(d => !_context.ClaimDocuments.Any(l => l.DocumentId == d.Id));
+        }
+
+        return await query
             .OrderByDescending(d => d.UploadedAt)
             .ThenBy(d => d.Id)
             .Skip((pageNumber - 1) * pageSize)
@@ -100,8 +144,15 @@ public class DocumentRepository : IDocumentRepository
             .ToListAsync(cancellationToken);
     }
 
-    // A document inherits its claim's visibility; standalone documents follow ClaimAccess.CanViewStandaloneDocument.
-    // Keep this in step with that method.
+    // EF emits ESCAPE '' unless told otherwise, which disables escaping entirely.
+    private const string LikeEscape = "\\";
+
+    // Makes the user's text match literally: LIKE treats %, _ and the escape character (\) as special.
+    private static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
+    // A document is visible if any claim it is linked to is visible. An unmatched document follows
+    // ClaimAccess.CanViewStandaloneDocument. Keep this in step with that method.
     private IQueryable<Document> VisibleTo(CurrentUser user)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -109,6 +160,7 @@ public class DocumentRepository : IDocumentRepository
         var documents = _context.Documents.AsNoTracking();
         var userId = user.Id;
         var viewableClaimIds = _context.Claims.Where(ClaimAccess.CanView(user)).Select(c => c.Id);
+        var links = _context.ClaimDocuments;
 
         if (user.IsAdmin)
         {
@@ -117,14 +169,15 @@ public class DocumentRepository : IDocumentRepository
 
         if (user.IsHandler)
         {
-            return documents.Where(d => d.ClaimId == null
-                ? d.UploadedByUserId == userId
-                : viewableClaimIds.Contains(d.ClaimId.Value));
+            return documents.Where(d => links.Any(l => l.DocumentId == d.Id)
+                ? links.Any(l => l.DocumentId == d.Id && viewableClaimIds.Contains(l.ClaimId))
+                : d.UploadedByUserId == userId);
         }
 
         if (user.IsReader)
         {
-            return documents.Where(d => d.ClaimId == null || viewableClaimIds.Contains(d.ClaimId.Value));
+            return documents.Where(d => !links.Any(l => l.DocumentId == d.Id)
+                || links.Any(l => l.DocumentId == d.Id && viewableClaimIds.Contains(l.ClaimId)));
         }
 
         return documents.Where(d => false);

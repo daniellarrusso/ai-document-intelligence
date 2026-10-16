@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Claim> Claims => Set<Claim>();
 
+    public DbSet<ClaimDocument> ClaimDocuments => Set<ClaimDocument>();
+
     public DbSet<AppUser> Users => Set<AppUser>();
 
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();

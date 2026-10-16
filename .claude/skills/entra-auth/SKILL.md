@@ -20,9 +20,10 @@ The roles above are the coarse gate; `Domain/ClaimAccess.cs` is the single defin
 | Role | Sees | Acts on (upload, delete document) |
 |---|---|---|
 | Admin | every claim and document | everything |
-| Handler | only claims assigned to them, and standalone documents they uploaded | only those |
+| Handler | only claims assigned to them, and unmatched documents they uploaded | only those |
 | Reader | every claim that is not `IsPrivate`, and standalone documents | nothing |
 
+- A document is visible if **any** claim it is linked to is visible (an unmatched one follows the standalone rule). Changing a link needs sight of the document and the right to act on the claim. Deleting a document needs the right to act on **every** claim it is linked to (`ClaimAccess.CanActOnDocument`). Unlinking can make a Handler lose sight of a document they didn't upload.
 - A claim or document the caller may not view is a **404**, not 403, so private claims don't reveal their existence. 403 is only for "can view, may not act".
 - Filtering happens in the repository query (`ClaimAccess.CanView` expression, `DocumentRepository.VisibleTo`), so paging and search are correct. Keep the expression and the in-memory checks in step (tests assert it).
 - `IDocumentRepository.GetDocumentByIdAsync` is **unfiltered** and only for the processing worker; request handling uses `GetDocumentForUserAsync`.

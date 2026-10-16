@@ -106,6 +106,29 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.ToTable("Claims");
                 });
 
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.ClaimDocument", b =>
+                {
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LinkedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ClaimId", "DocumentId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("LinkedByUserId");
+
+                    b.ToTable("ClaimDocuments");
+                });
+
             modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -115,9 +138,6 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Property<string>("BlobName")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<Guid?>("ClaimId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -149,8 +169,6 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ClaimId");
 
                     b.ToTable("Documents");
                 });
@@ -203,12 +221,24 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                     b.Navigation("AssignedToUser");
                 });
 
-            modelBuilder.Entity("AiDocumentIntelligence.Domain.Document", b =>
+            modelBuilder.Entity("AiDocumentIntelligence.Domain.ClaimDocument", b =>
                 {
                     b.HasOne("AiDocumentIntelligence.Domain.Claim", null)
-                        .WithMany("Documents")
+                        .WithMany()
                         .HasForeignKey("ClaimId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AiDocumentIntelligence.Domain.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AiDocumentIntelligence.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("AiDocumentIntelligence.Infrastructure.DocumentChunk", b =>
@@ -218,11 +248,6 @@ namespace AiDocumentIntelligence.Infrastructure.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("AiDocumentIntelligence.Domain.Claim", b =>
-                {
-                    b.Navigation("Documents");
                 });
 #pragma warning restore 612, 618
         }

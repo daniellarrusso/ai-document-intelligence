@@ -107,4 +107,27 @@ public class ClaimAccessTests
         Assert.Equal(canView, ClaimAccess.CanViewStandaloneDocument(user, document));
         Assert.Equal(canAct, ClaimAccess.CanActOnStandaloneDocument(user, document));
     }
+
+    [Fact]
+    public void CanActOnDocument_Unmatched_FollowsTheStandaloneRule()
+    {
+        var document = new Document { Id = Guid.NewGuid(), UploadedByUserId = TestUsers.Handler.Id };
+
+        Assert.True(ClaimAccess.CanActOnDocument(TestUsers.Handler, document, []));
+        Assert.False(ClaimAccess.CanActOnDocument(TestUsers.OtherHandler, document, []));
+        Assert.True(ClaimAccess.CanActOnDocument(TestUsers.Admin, document, []));
+    }
+
+    [Fact]
+    public void CanActOnDocument_LinkedToSeveralClaims_NeedsTheRightToActOnAllOfThem()
+    {
+        var document = new Document { Id = Guid.NewGuid() };
+        var own = new Claim { Id = Guid.NewGuid(), AssignedToUserId = TestUsers.Handler.Id };
+        var others = new Claim { Id = Guid.NewGuid(), AssignedToUserId = TestUsers.OtherHandler.Id };
+
+        Assert.True(ClaimAccess.CanActOnDocument(TestUsers.Handler, document, [own]));
+        Assert.False(ClaimAccess.CanActOnDocument(TestUsers.Handler, document, [own, others]));
+        Assert.True(ClaimAccess.CanActOnDocument(TestUsers.Admin, document, [own, others]));
+        Assert.False(ClaimAccess.CanActOnDocument(TestUsers.Reader, document, [own]));
+    }
 }

@@ -30,10 +30,18 @@ public class ClaimConfiguration : IEntityTypeConfiguration<Claim>
             .HasForeignKey(c => c.CreatedByUserId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // Restrict: deleting a claim must not silently delete its documents.
+        // Many-to-many through ClaimDocument. Restrict on the claim side: deleting a claim must not silently
+        // unlink its documents. Cascade on the document side: deleting a document removes its links.
         builder.HasMany(c => c.Documents)
-            .WithOne()
-            .HasForeignKey(d => d.ClaimId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .WithMany()
+            .UsingEntity<ClaimDocument>(
+                link => link.HasOne<Document>().WithMany().HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade),
+                link => link.HasOne<Claim>().WithMany().HasForeignKey(l => l.ClaimId).OnDelete(DeleteBehavior.Restrict),
+                link =>
+                {
+                    link.HasKey(l => new { l.ClaimId, l.DocumentId });
+                    link.HasIndex(l => l.DocumentId);
+                    link.HasOne<AppUser>().WithMany().HasForeignKey(l => l.LinkedByUserId).OnDelete(DeleteBehavior.SetNull);
+                });
     }
 }

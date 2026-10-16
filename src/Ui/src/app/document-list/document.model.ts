@@ -49,8 +49,15 @@ export interface DocumentSummary {
   processedAt: string | null;
   extractedText: string | null;
   summary: string | null;
-  /** The claim the document belongs to, if any. */
-  claimId?: string | null;
+}
+
+export interface DocumentQuery {
+  /** Case-insensitive match on the file name. */
+  search?: string;
+  /** Only documents that are linked to no claim. */
+  unmatched?: boolean;
+  pageNumber: number;
+  pageSize: number;
 }
 
 // A retrieved document excerpt that supports an answer. Score is cosine similarity (higher is more relevant).

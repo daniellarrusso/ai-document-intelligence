@@ -49,7 +49,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.Replace(ServiceDescriptor.Scoped(_ => Users.Object));
 
             var documents = Documents;
-            documents.Setup(r => r.GetDocumentsAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            documents.Setup(r => r.GetDocumentsAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             services.Replace(ServiceDescriptor.Scoped(_ => documents.Object));
 
