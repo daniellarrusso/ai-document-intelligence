@@ -24,6 +24,15 @@ public class DocumentRepository : IDocumentRepository
         return document.Id;
     }
 
+    public async Task<Dictionary<Guid, int>> GetLinkCountsAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default)
+    {
+        return await _context.ClaimDocuments
+            .Where(l => documentIds.Contains(l.DocumentId))
+            .GroupBy(l => l.DocumentId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+    }
+
     public async Task LinkToClaimAsync(Guid documentId, Guid claimId, Guid linkedByUserId, CancellationToken cancellationToken = default)
     {
         if (await _context.ClaimDocuments.AnyAsync(l => l.DocumentId == documentId && l.ClaimId == claimId, cancellationToken))

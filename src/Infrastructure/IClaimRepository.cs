@@ -31,4 +31,10 @@ public interface IClaimRepository
     // Every claim the document is linked to, regardless of who may view it. Only for authorisation decisions
     // (such as "may this user delete the document"); never return the result to a caller.
     Task<List<Claim>> GetAllClaimsForDocumentAsync(Guid documentId, CancellationToken cancellationToken = default);
+
+    // The user's newest viewable claims, without documents or assignee names, for matching documents against.
+    Task<List<Claim>> GetClaimsForMatchingAsync(CurrentUser user, int limit, CancellationToken cancellationToken = default);
+
+    // Viewable claims whose reference or policy number is one of the given upper-cased values.
+    Task<List<Claim>> GetClaimsByIdentifiersAsync(CurrentUser user, IReadOnlyCollection<string> references, IReadOnlyCollection<string> policyNumbers, CancellationToken cancellationToken = default);
 }

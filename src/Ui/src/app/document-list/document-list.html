@@ -24,6 +24,7 @@
           <th class="py-2 pr-4 font-medium">Name</th>
           <th class="py-2 pr-4 font-medium">Size</th>
           <th class="py-2 pr-4 font-medium">Status</th>
+          <th class="py-2 pr-4 font-medium">Claims</th>
           <th class="py-2 font-medium">Uploaded</th>
         </tr>
       </thead>
@@ -37,6 +38,22 @@
             </td>
             <td class="py-3 pr-4">{{ formatSize(document.fileSize) }}</td>
             <td class="py-3 pr-4">{{ statusLabel(document.status) }}</td>
+            <td class="py-3 pr-4">
+              @if (document.claimCount === 0) {
+                <span class="text-slate-500">Unmatched</span>
+                @if (user.canWrite()) {
+                  <a
+                    [routerLink]="['/documents', document.id]"
+                    [queryParams]="{ match: 1 }"
+                    class="ml-2 text-sky-700 hover:underline"
+                    [attr.aria-label]="'Match ' + document.fileName + ' to a claim'"
+                    >Match to claim</a
+                  >
+                }
+              } @else if (document.claimCount) {
+                {{ document.claimCount }}
+              }
+            </td>
             <td class="py-3">{{ document.uploadedAt | date: 'medium' }}</td>
           </tr>
         }

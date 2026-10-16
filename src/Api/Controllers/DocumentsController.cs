@@ -13,12 +13,14 @@ public class DocumentsController : ControllerBase
 
     private readonly ILogger<DocumentsController> _logger;
     private readonly DocumentService _documentService;
+    private readonly DocumentMatchService _matchService;
     private readonly IDocumentQuestionAnswerer _questionAnswerer;
 
-    public DocumentsController(ILogger<DocumentsController> logger, DocumentService documentService, IDocumentQuestionAnswerer questionAnswerer)
+    public DocumentsController(ILogger<DocumentsController> logger, DocumentService documentService, DocumentMatchService matchService, IDocumentQuestionAnswerer questionAnswerer)
     {
         _logger = logger;
         _documentService = documentService;
+        _matchService = matchService;
         _questionAnswerer = questionAnswerer;
     }
 
@@ -49,7 +51,9 @@ public class DocumentsController : ControllerBase
         try
         {
             var documents = await _documentService.GetDocumentsAsync(user, pageNumber, pageSize, q, unmatched, cancellationToken);
-            return Ok(documents);
+            var counts = await _documentService.GetLinkCountsAsync(documents.Select(d => d.Id).ToList(), cancellationToken);
+
+            return Ok(documents.Select(d => DocumentListItem.From(d, counts.GetValueOrDefault(d.Id))));
         }
         catch (ArgumentException ex)
         {
@@ -69,6 +73,22 @@ public class DocumentsController : ControllerBase
         var claims = await _documentService.GetLinkedClaimsAsync(user, id, cancellationToken);
 
         return claims == null ? NotFound() : Ok(claims.Select(ClaimResponse.From));
+    }
+
+    // Which claims the document looks like it belongs to, and whether its current links look right. Only
+    // suggests; linking is a separate, confirmed call. ai=true lets the AI try when the text checks find nothing.
+    [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [HttpGet("{id}/match-suggestions", Name = "GetDocumentMatchSuggestions")]
+    public async Task<IActionResult> GetMatchSuggestions(Guid id, CancellationToken cancellationToken, [FromQuery] bool ai = false)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var scan = await _matchService.ScanAsync(user, id, ai, cancellationToken);
+
+        return scan == null ? NotFound() : Ok(MatchScanResponse.From(scan));
     }
 
     [HttpGet("{id}", Name = "GetDocumentById")]
@@ -171,3 +191,51 @@ public class DocumentsController : ControllerBase
 }
 
 public record AskDocumentRequest(string? Question);
+
+// A document in the list: everything the document endpoint returns, plus how many claims it is linked to
+// (0 = unmatched).
+public record DocumentListItem(
+    Guid Id,
+    string FileName,
+    string ContentType,
+    long FileSize,
+    string BlobName,
+    DocumentStatus Status,
+    DateTime UploadedAt,
+    DateTime? ProcessedAt,
+    string? ExtractedText,
+    string? Summary,
+    Guid? UploadedByUserId,
+    int ClaimCount)
+{
+    public static DocumentListItem From(Document d, int claimCount) => new(
+        d.Id, d.FileName, d.ContentType, d.FileSize, d.BlobName, d.Status, d.UploadedAt, d.ProcessedAt,
+        d.ExtractedText, d.Summary, d.UploadedByUserId, claimCount);
+}
+
+public record ClaimMatchResponse(ClaimResponse Claim, MatchMethod Method, string Detail)
+{
+    public static ClaimMatchResponse From(ClaimMatch match) => new(ClaimResponse.From(match.Claim), match.Method, match.Detail);
+}
+
+// A current link and, if the text supports it, why. Supported = false means the text never mentions the claim.
+public record LinkedClaimCheckResponse(ClaimResponse Claim, bool Supported, MatchMethod? Method, string? Detail)
+{
+    public static LinkedClaimCheckResponse From(LinkedClaimCheck check) =>
+        new(ClaimResponse.From(check.Claim), check.Evidence != null, check.Evidence?.Method, check.Evidence?.Detail);
+}
+
+public record MatchScanResponse(
+    bool TextAvailable,
+    IReadOnlyList<ClaimMatchResponse> Suggestions,
+    IReadOnlyList<LinkedClaimCheckResponse> LinkedClaims,
+    bool AiAttempted,
+    bool AiFailed)
+{
+    public static MatchScanResponse From(MatchScan scan) => new(
+        scan.TextAvailable,
+        scan.Suggestions.Select(ClaimMatchResponse.From).ToList(),
+        scan.LinkedClaims.Select(LinkedClaimCheckResponse.From).ToList(),
+        scan.AiAttempted,
+        scan.AiFailed);
+}

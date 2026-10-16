@@ -9,8 +9,11 @@ import {
   AnswerSource,
   DocumentStatus,
   DocumentSummary,
+  MatchMethod,
+  MatchScan,
   PIPELINE_STATUSES,
   documentStatusLabel,
+  matchMethodLabel,
 } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { UserService } from '../auth/user.service';
@@ -60,6 +63,30 @@ export class DocumentDetails {
   protected readonly claimSearchError = signal('');
   protected readonly linkingIds = signal<ReadonlySet<string>>(new Set());
   protected readonly linkError = signal('');
+
+  // Why this page may look for matches by itself: right after an upload ('upload', asks for confirmation in a
+  // dialog) or when opened from the list's "Match to claim" link ('match', shows the results inline).
+  private readonly autoScanMode: 'upload' | 'match' | null =
+    this.route.snapshot.queryParamMap.get('uploaded') === '1'
+      ? 'upload'
+      : this.route.snapshot.queryParamMap.get('match') === '1'
+        ? 'match'
+        : null;
+  private autoScanStarted = false;
+
+  protected readonly scan = signal<MatchScan | null>(null);
+  protected readonly scanning = signal(false);
+  protected readonly scanError = signal('');
+  protected readonly confirmingMatch = signal(false);
+  /** Linked claims the user chose to keep even though the text doesn't mention them. */
+  protected readonly keptClaimIds = signal<ReadonlySet<string>>(new Set());
+
+  protected readonly canScan = computed(() => this.user.canWrite() && this.document()?.status === DocumentStatus.Completed);
+
+  /** Current links whose claim the document's text never mentions, which the user hasn't chosen to keep. */
+  protected readonly unsupportedLinks = computed(() =>
+    (this.scan()?.linkedClaims ?? []).filter((l) => !l.supported && !this.keptClaimIds().has(l.claim.id)),
+  );
 
   /** Search results minus the claims the document is already linked to. */
   protected readonly linkableClaims = computed(() => {
@@ -112,6 +139,7 @@ export class DocumentDetails {
         this.document.set(document);
         this.loading.set(false);
         this.schedulePollIfInProgress(document);
+        this.maybeAutoScan();
       },
       error: (err: { status?: number }) => {
         this.error.set(err.status === 404 ? 'Document not found.' : 'Unable to load document.');
@@ -130,6 +158,7 @@ export class DocumentDetails {
       next: (claims) => {
         this.linkedClaims.set(claims);
         this.claimsLoaded.set(true);
+        this.maybeAutoScan();
       },
       error: (err: { status?: number }) => {
         if (err.status === 404) {
@@ -138,6 +167,73 @@ export class DocumentDetails {
         }
       },
     });
+  }
+
+  // Once the document has been processed (and we know its links), look for matches a single time.
+  private maybeAutoScan(): void {
+    if (
+      !this.autoScanMode ||
+      this.autoScanStarted ||
+      !this.canScan() ||
+      !this.claimsLoaded()
+    ) {
+      return;
+    }
+
+    this.autoScanStarted = true;
+    // Ask the AI too, but only if the cheap checks find nothing.
+    this.runScan(false, (first) => {
+      if (first.suggestions.length === 0 && first.textAvailable) {
+        this.runScan(true, (second) => this.offerSuggestions(second));
+      } else {
+        this.offerSuggestions(first);
+      }
+    });
+  }
+
+  private offerSuggestions(scan: MatchScan): void {
+    if (this.autoScanMode === 'upload' && scan.suggestions.length > 0) {
+      this.confirmingMatch.set(true);
+    }
+  }
+
+  /** Looks at the document's text for claims it belongs to and checks its current links. */
+  protected scanForMatches(useAi = false): void {
+    this.runScan(useAi);
+  }
+
+  private runScan(useAi: boolean, onDone?: (scan: MatchScan) => void): void {
+    const id = this.document()?.id;
+    if (!id || this.scanning()) {
+      return;
+    }
+
+    this.scanning.set(true);
+    this.scanError.set('');
+
+    this.documentService.getMatchSuggestions(id, useAi).subscribe({
+      next: (scan) => {
+        this.scan.set(scan);
+        this.scanning.set(false);
+        onDone?.(scan);
+      },
+      error: () => {
+        this.scanError.set('Unable to scan the document for matching claims.');
+        this.scanning.set(false);
+      },
+    });
+  }
+
+  protected closeMatchDialog(): void {
+    this.confirmingMatch.set(false);
+  }
+
+  protected keepLink(claimId: string): void {
+    this.keptClaimIds.update((ids) => new Set(ids).add(claimId));
+  }
+
+  protected matchLabel(method: MatchMethod): string {
+    return matchMethodLabel(method);
   }
 
   protected onClaimSearchInput(event: Event): void {
@@ -168,14 +264,26 @@ export class DocumentDetails {
   }
 
   protected linkToClaim(claimId: string): void {
-    this.changeLink(claimId, (documentId) => this.claimService.linkDocument(claimId, documentId));
+    this.changeLink(claimId, (documentId) => this.claimService.linkDocument(claimId, documentId), () => {
+      // No longer a suggestion; close the dialog once there is nothing left to confirm.
+      this.scan.update((scan) =>
+        scan ? { ...scan, suggestions: scan.suggestions.filter((m) => m.claim.id !== claimId) } : scan,
+      );
+      if (this.scan()?.suggestions.length === 0) {
+        this.confirmingMatch.set(false);
+      }
+    });
   }
 
   protected unlinkFromClaim(claimId: string): void {
-    this.changeLink(claimId, (documentId) => this.claimService.unlinkDocument(claimId, documentId));
+    this.changeLink(claimId, (documentId) => this.claimService.unlinkDocument(claimId, documentId), () =>
+      this.scan.update((scan) =>
+        scan ? { ...scan, linkedClaims: scan.linkedClaims.filter((l) => l.claim.id !== claimId) } : scan,
+      ),
+    );
   }
 
-  private changeLink(claimId: string, request: (documentId: string) => Observable<void>): void {
+  private changeLink(claimId: string, request: (documentId: string) => Observable<void>, onDone?: () => void): void {
     const documentId = this.document()?.id;
     if (!documentId || this.linkingIds().has(claimId)) {
       return;
@@ -187,6 +295,7 @@ export class DocumentDetails {
     request(documentId).subscribe({
       next: () => {
         this.setLinking(claimId, false);
+        onDone?.();
         this.loadClaims();
       },
       error: (err: HttpErrorResponse) => {

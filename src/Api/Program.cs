@@ -34,6 +34,8 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IClaimRepository, ClaimRepository>();
 builder.Services.AddScoped<ClaimService>();
+builder.Services.AddScoped<IClaimMatchAssistant, AIChatClaimMatchAssistant>();
+builder.Services.AddScoped<DocumentMatchService>();
 builder.Services.AddSingleton<LocalDocumentProcessingQueue>();
 builder.Services.AddSingleton<IDocumentProcessingQueue>(sp => sp.GetRequiredService<LocalDocumentProcessingQueue>());
 builder.Services.AddHostedService<LocalDocumentProcessingWorker>();

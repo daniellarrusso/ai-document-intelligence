@@ -22,6 +22,10 @@ public class Document
 
     public string? Summary { get; set; }
 
+    // Lowercase hex SHA-256 of the uploaded file's bytes, for recognising identical files. Null for documents
+    // uploaded before it was recorded.
+    public string? ContentHash { get; set; }
+
     // Null for documents uploaded before ownership was recorded.
     public Guid? UploadedByUserId { get; set; }
 }

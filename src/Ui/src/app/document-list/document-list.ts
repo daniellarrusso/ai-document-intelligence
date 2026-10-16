@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { UserService } from '../auth/user.service';
 import { DocumentStatus, DocumentSummary, documentStatusLabel } from './document.model';
 import { DocumentService } from './document.service';
 
@@ -14,6 +15,7 @@ const POLL_INTERVAL_MS = 2000;
 })
 export class DocumentList {
   private readonly documentService = inject(DocumentService);
+  protected readonly user = inject(UserService);
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly documents = signal<DocumentSummary[]>([]);

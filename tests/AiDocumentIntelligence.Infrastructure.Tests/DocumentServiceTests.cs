@@ -294,4 +294,69 @@ public class DocumentServiceTests
         Assert.Null(await sut.GetLinkedClaimsAsync(TestUsers.Reader, Guid.NewGuid()));
         _claimRepositoryMock.Verify(r => r.GetClaimsForDocumentAsync(It.IsAny<CurrentUser>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task SaveDocumentAsync_StoresTheSha256OfTheUploadedBytes()
+    {
+        var sut = CreateSut();
+
+        var document = await sut.SaveDocumentAsync(CreateRequest(), TestUsers.Handler);
+
+        Assert.Equal(await ContentHasher.ComputeAsync(new MemoryStream([1, 2, 3])), document.ContentHash);
+        _repositoryMock.Verify(r => r.CreateDocumentAsync(It.Is<Document>(d => d.ContentHash == document.ContentHash), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_IdenticalFilesUnderDifferentNames_GetTheSameHash()
+    {
+        var sut = CreateSut();
+
+        var first = await sut.SaveDocumentAsync(new UploadDocumentRequest(new MemoryStream([9, 9, 9]), "a.pdf", "application/pdf", 3), TestUsers.Handler);
+        var second = await sut.SaveDocumentAsync(new UploadDocumentRequest(new MemoryStream([9, 9, 9]), "copy of a.pdf", "application/pdf", 3), TestUsers.Handler);
+        var different = await sut.SaveDocumentAsync(new UploadDocumentRequest(new MemoryStream([9, 9, 8]), "b.pdf", "application/pdf", 3), TestUsers.Handler);
+
+        Assert.Equal(first.ContentHash, second.ContentHash);
+        Assert.NotEqual(first.ContentHash, different.ContentHash);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_StorageStillReceivesTheWholeFileFromTheStart()
+    {
+        long? positionAtUpload = null;
+        _storageMock
+            .Setup(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Stream, string, string, CancellationToken>((stream, _, _, _) => positionAtUpload = stream.Position)
+            .ReturnsAsync("blob");
+        var sut = CreateSut();
+
+        await sut.SaveDocumentAsync(CreateRequest(), TestUsers.Handler);
+
+        Assert.Equal(0, positionAtUpload);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_UnhashableStream_FailsBeforeStoringAnything()
+    {
+        var sut = CreateSut();
+        var request = new UploadDocumentRequest(new ForwardOnlyStream(), "a.pdf", "application/pdf", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => sut.SaveDocumentAsync(request, TestUsers.Handler));
+
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private sealed class ForwardOnlyStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => 1;
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => 0;
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }

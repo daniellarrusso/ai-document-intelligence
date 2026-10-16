@@ -1,4 +1,5 @@
 using System.Text;
+using AiDocumentIntelligence.Domain;
 using Xunit;
 
 namespace AiDocumentIntelligence.Infrastructure.Tests;
@@ -61,5 +62,34 @@ public class PdfDocumentTextExtractorTests
         var result = await sut.ExtractTextAsync(content, "application/pdf");
 
         Assert.Contains("Hello World", result);
+    }
+
+    private static readonly string PoliceReportPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "police-report.pdf");
+
+    [Fact]
+    public async Task ExtractTextAsync_SeparateLines_KeepsTheLineBreaks()
+    {
+        var sut = CreateSut();
+        await using var content = File.OpenRead(PoliceReportPath);
+
+        var result = await sut.ExtractTextAsync(content, "application/pdf");
+
+        // Raw page text gave "Policy number: 1234567Claimant: TestOn 14 October...".
+        Assert.Contains("Policy number: 1234567\n", result.Replace("\r\n", "\n"));
+        Assert.Contains("Claimant: Test\n", result.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("1234567Claimant", result);
+    }
+
+    [Fact]
+    public async Task ExtractTextAsync_ThenMatching_FindsTheClaimByPolicyNumberAndName()
+    {
+        var sut = CreateSut();
+        await using var content = File.OpenRead(PoliceReportPath);
+        var text = await sut.ExtractTextAsync(content, "application/pdf");
+        var claim = new Claim { Id = Guid.NewGuid(), Reference = "CLM-20261016-4E319990", PolicyNumber = "1234567", ClaimantName = "Test Adams" };
+
+        Assert.Equal(MatchMethod.PolicyNumber, ClaimTextMatcher.Match(claim, text)!.Method);
+        Assert.Contains("1234567", ClaimTextMatcher.FindPolicyCandidates(text));
+        Assert.Contains("CLM-20261015-011076AB", ClaimTextMatcher.FindReferences(text));
     }
 }
