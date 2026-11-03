@@ -1,6 +1,8 @@
 using System.Text;
 using AiDocumentIntelligence.Domain;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace AiDocumentIntelligence.Infrastructure;
 
@@ -10,6 +12,22 @@ public class PdfDocumentTextExtractor : IDocumentTextExtractor
 
     public bool CanHandle(string contentType) =>
         string.Equals(contentType, SupportedContentType, StringComparison.OrdinalIgnoreCase);
+
+    // page.Text is just the page's letters in the order they were drawn: no line breaks, and words that were
+    // drawn separately run together ("LimitedAspect House", "ADAMS50 REDVERS ROAD"). Content-order extraction
+    // rebuilds words and lines from the letters' positions, which is what matching and search need.
+    private static string ExtractPageText(Page page)
+    {
+        try
+        {
+            return ContentOrderTextExtractor.GetText(page);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The layout analysis can fail on unusual pages; the raw text is still better than none.
+            return page.Text;
+        }
+    }
 
     public Task<string> ExtractTextAsync(Stream content, string contentType, CancellationToken cancellationToken = default)
     {
@@ -33,7 +51,7 @@ public class PdfDocumentTextExtractor : IDocumentTextExtractor
             foreach (var page in document.GetPages())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                text.AppendLine(page.Text);
+                text.AppendLine(ExtractPageText(page));
             }
 
             return Task.FromResult(text.ToString().Trim());

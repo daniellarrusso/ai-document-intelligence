@@ -34,9 +34,10 @@ export class UploadDocument {
     this.uploading.set(true);
     this.message.set('');
 
-    // Navigate to the details page on success: that's where processing progress is now shown.
+    // Navigate to the details page on success: that's where processing progress is now shown. `uploaded`
+    // tells that page to suggest claims for the document once it has been processed.
     this.documentService.upload(file).subscribe({
-      next: (document) => void this.router.navigateByUrl(`/documents/${document.id}`),
+      next: (document) => void this.router.navigateByUrl(`/documents/${document.id}?uploaded=1`),
       error: (err: HttpErrorResponse) => {
         this.message.set(uploadErrorMessage(err));
         this.uploading.set(false);

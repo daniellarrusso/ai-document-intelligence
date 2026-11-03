@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { Claim } from '../claims/claim.model';
 import { environment } from '../../environments/environment';
-import { DocumentAnswer, DocumentQuery, DocumentSummary } from './document.model';
+import { DocumentAnswer, DocumentQuery, DocumentSummary, MatchScan } from './document.model';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -34,6 +34,14 @@ export class DocumentService {
   /** The claims this document is linked to that the caller may see; empty means the document is unmatched. */
   getClaims(id: string): Observable<Claim[]> {
     return this.http.get<Claim[]>(`${this.baseUrl}/${id}/claims`);
+  }
+
+  /**
+   * Checks the document's text against the claims the caller can act on. With `ai`, the AI is asked when the
+   * reference, policy number and name checks find nothing. Only suggests; nothing is linked.
+   */
+  getMatchSuggestions(id: string, ai = false): Observable<MatchScan> {
+    return this.http.get<MatchScan>(`${this.baseUrl}/${id}/match-suggestions`, { params: { ai } });
   }
 
   getDocument(id: string): Observable<DocumentSummary> {

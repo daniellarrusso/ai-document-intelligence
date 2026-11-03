@@ -133,4 +133,29 @@ public class ClaimRepository : IClaimRepository
             .Where(c => _context.ClaimDocuments.Any(l => l.ClaimId == c.Id && l.DocumentId == documentId))
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<List<Claim>> GetClaimsForMatchingAsync(CurrentUser user, int limit, CancellationToken cancellationToken = default)
+    {
+        return await _context.Claims
+            .AsNoTracking()
+            .Where(ClaimAccess.CanView(user))
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Claim>> GetClaimsByIdentifiersAsync(CurrentUser user, IReadOnlyCollection<string> references, IReadOnlyCollection<string> policyNumbers, CancellationToken cancellationToken = default)
+    {
+        if (references.Count == 0 && policyNumbers.Count == 0)
+        {
+            return [];
+        }
+
+        return await _context.Claims
+            .AsNoTracking()
+            .Where(ClaimAccess.CanView(user))
+            .Where(c => references.Contains(c.Reference.ToUpper()) || policyNumbers.Contains(c.PolicyNumber.ToUpper()))
+            .ToListAsync(cancellationToken);
+    }
 }

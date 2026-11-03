@@ -6,7 +6,7 @@ import { vi } from 'vitest';
 import { UserService } from '../auth/user.service';
 import { Claim, ClaimStatus } from '../claims/claim.model';
 import { ClaimService } from '../claims/claim.service';
-import { DocumentStatus, DocumentSummary } from '../document-list/document.model';
+import { DocumentStatus, DocumentSummary, MatchMethod, MatchScan } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { DocumentDetails } from './document-details';
 
@@ -38,10 +38,16 @@ const claim: Claim = {
 
 const otherClaim: Claim = { ...claim, id: 'claim-2', reference: 'CLM-20260902-BBBB2222', claimantName: 'John Roe' };
 
-type DocumentApi = Partial<Record<'getDocument' | 'delete' | 'ask' | 'getClaims', unknown>>;
+type DocumentApi = Partial<Record<'getDocument' | 'delete' | 'ask' | 'getClaims' | 'getMatchSuggestions', unknown>>;
 type ClaimApi = Partial<Record<'getClaims' | 'linkDocument' | 'unlinkDocument', unknown>>;
 
-async function render(service: DocumentApi, canWrite = true, claimApi: ClaimApi = {}, fromClaim: string | null = null) {
+async function render(
+  service: DocumentApi,
+  canWrite = true,
+  claimApi: ClaimApi = {},
+  fromClaim: string | null = null,
+  query: Record<string, string> = {},
+) {
   await TestBed.configureTestingModule({
     imports: [DocumentDetails],
     providers: [
@@ -54,7 +60,7 @@ async function render(service: DocumentApi, canWrite = true, claimApi: ClaimApi 
         useValue: {
           snapshot: {
             paramMap: new Map([['id', 'abc']]),
-            queryParamMap: new Map(fromClaim ? [['claim', fromClaim]] : []),
+            queryParamMap: new Map(Object.entries(fromClaim ? { claim: fromClaim, ...query } : query)),
           },
         },
       },
@@ -468,6 +474,251 @@ describe('DocumentDetails', () => {
       expect(el.textContent).toContain(claim.reference);
       expect(el.querySelector('details')).toBeNull();
       expect(el.querySelector('button[aria-label^="Unlink"]')).toBeNull();
+    });
+  });
+
+  describe('match scanning', () => {
+    const emptyScan: MatchScan = { textAvailable: true, suggestions: [], linkedClaims: [], aiAttempted: false, aiFailed: false };
+    const suggestion = { claim: otherClaim, method: MatchMethod.Reference, detail: 'The document quotes the claim reference.' };
+    const scanWith = (scan: Partial<MatchScan>): MatchScan => ({ ...emptyScan, ...scan });
+
+    const clickButton = async (el: HTMLElement, fixture: { whenStable: () => Promise<unknown> }, label: RegExp | string) => {
+      const button = Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
+        typeof label === 'string'
+          ? b.getAttribute('aria-label') === label || b.textContent?.trim() === label
+          : label.test(b.textContent ?? ''),
+      )!;
+      button.click();
+      await fixture.whenStable();
+    };
+
+    it('lists possible matches with the reason and links the chosen one', async () => {
+      const getMatchSuggestions = vi.fn(() => of(scanWith({ suggestions: [suggestion] })));
+      const linkDocument = vi.fn(() => of(undefined));
+      const { el, fixture } = await render({ getDocument: () => of(sample), getMatchSuggestions }, true, { linkDocument });
+
+      await clickButton(el, fixture, /Scan for matches/);
+
+      expect(getMatchSuggestions).toHaveBeenCalledWith('abc', false);
+      expect(el.textContent).toContain('Claim reference: The document quotes the claim reference.');
+
+      await clickButton(el, fixture, `Link to ${otherClaim.reference}`);
+
+      expect(linkDocument).toHaveBeenCalledWith('claim-2', 'abc');
+      expect(el.textContent).not.toContain('Possible matches');
+    });
+
+    it('offers an AI attempt when nothing is found, and uses it once', async () => {
+      const getMatchSuggestions = vi
+        .fn()
+        .mockReturnValueOnce(of(emptyScan))
+        .mockReturnValue(of(scanWith({ aiAttempted: true, suggestions: [{ ...suggestion, method: MatchMethod.Ai, detail: 'Signed J. Roe' }] })));
+      const { el, fixture } = await render({ getDocument: () => of(sample), getMatchSuggestions });
+
+      await clickButton(el, fixture, /Scan for matches/);
+      expect(el.textContent).toContain('No other claims found');
+
+      await clickButton(el, fixture, /Try AI match/);
+
+      expect(getMatchSuggestions).toHaveBeenLastCalledWith('abc', true);
+      expect(el.textContent).toContain('AI suggestion: Signed J. Roe');
+      expect(el.textContent).not.toContain('Try AI match');
+    });
+
+    it('says when the AI could not be reached', async () => {
+      const { el, fixture } = await render({
+        getDocument: () => of(sample),
+        getMatchSuggestions: () => of(scanWith({ aiAttempted: true, aiFailed: true })),
+      });
+
+      await clickButton(el, fixture, /Scan for matches/);
+
+      expect(el.textContent).toContain('The AI service was unavailable');
+    });
+
+    it('explains when the document has no text to check', async () => {
+      const { el, fixture } = await render({
+        getDocument: () => of(sample),
+        getMatchSuggestions: () => of(scanWith({ textAvailable: false })),
+      });
+
+      await clickButton(el, fixture, /Scan for matches/);
+
+      expect(el.textContent).toContain('no extracted text to check');
+    });
+
+    it('reports a failed scan', async () => {
+      const { el, fixture } = await render({
+        getDocument: () => of(sample),
+        getMatchSuggestions: () => throwError(() => ({ status: 500 })),
+      });
+
+      await clickButton(el, fixture, /Scan for matches/);
+
+      expect(el.textContent).toContain('Unable to scan the document for matching claims.');
+    });
+
+    it('flags a link the text never mentions, and lets the user keep it', async () => {
+      const unsupported = { claim, supported: false, method: null, detail: null };
+      const { el, fixture } = await render(
+        { getDocument: () => of(sample), getClaims: () => of([claim]), getMatchSuggestions: () => of(scanWith({ linkedClaims: [unsupported] })) },
+      );
+
+      await clickButton(el, fixture, /Scan for matches/);
+      expect(el.querySelector('[role="status"]')?.textContent).toContain('never mentions it');
+
+      await clickButton(el, fixture, `Keep link to ${claim.reference}`);
+
+      expect(el.querySelector('[role="status"]')).toBeNull();
+    });
+
+    it('lets the user unlink a link the text never mentions', async () => {
+      const unlinkDocument = vi.fn(() => of(undefined));
+      const unsupported = { claim, supported: false, method: null, detail: null };
+      const { el, fixture } = await render(
+        { getDocument: () => of(sample), getClaims: () => of([claim]), getMatchSuggestions: () => of(scanWith({ linkedClaims: [unsupported] })) },
+        true,
+        { unlinkDocument },
+      );
+      await clickButton(el, fixture, /Scan for matches/);
+
+      await clickButton(el, fixture, `Unlink from ${claim.reference} as it is not mentioned`);
+
+      expect(unlinkDocument).toHaveBeenCalledWith('claim-1', 'abc');
+      expect(el.querySelector('[role="status"]')).toBeNull();
+    });
+
+    it('does not flag a link the text supports', async () => {
+      const supported = { claim, supported: true, method: MatchMethod.Reference, detail: 'quoted' };
+      const { el, fixture } = await render(
+        { getDocument: () => of(sample), getClaims: () => of([claim]), getMatchSuggestions: () => of(scanWith({ linkedClaims: [supported] })) },
+      );
+
+      await clickButton(el, fixture, /Scan for matches/);
+
+      expect(el.querySelector('[role="status"]')).toBeNull();
+    });
+
+    it('offers no scanning to a read-only user or while the document is still processing', async () => {
+      const readOnly = await render({ getDocument: () => of(sample) }, false);
+      expect(readOnly.el.textContent).not.toContain('Scan for matches');
+      TestBed.resetTestingModule();
+
+      const processing = await render({ getDocument: () => of({ ...sample, status: DocumentStatus.ExtractingText }) });
+      expect(processing.el.textContent).not.toContain('Scan for matches');
+    });
+
+    describe('right after an upload', () => {
+      it('asks to confirm a found match in a dialog, and links it on confirm', async () => {
+        const getMatchSuggestions = vi.fn(() => of(scanWith({ suggestions: [suggestion] })));
+        const linkDocument = vi.fn(() => of(undefined));
+        const { el, fixture } = await render({ getDocument: () => of(sample), getMatchSuggestions }, true, { linkDocument }, null, { uploaded: '1' });
+
+        const dialog = el.querySelector('[role="dialog"]')!;
+        expect(dialog.textContent).toContain('Link this document to a claim?');
+        expect(dialog.textContent).toContain(otherClaim.reference);
+        expect(getMatchSuggestions).toHaveBeenCalledTimes(1);
+
+        await clickButton(el, fixture, `Confirm link to ${otherClaim.reference}`);
+
+        expect(linkDocument).toHaveBeenCalledWith('claim-2', 'abc');
+        expect(el.querySelector('[role="dialog"]')).toBeNull();
+      });
+
+      it('links nothing when the user says "Not now"', async () => {
+        const linkDocument = vi.fn(() => of(undefined));
+        const { el, fixture } = await render(
+          { getDocument: () => of(sample), getMatchSuggestions: () => of(scanWith({ suggestions: [suggestion] })) },
+          true,
+          { linkDocument },
+          null,
+          { uploaded: '1' },
+        );
+
+        await clickButton(el, fixture, 'Not now');
+
+        expect(el.querySelector('[role="dialog"]')).toBeNull();
+        expect(linkDocument).not.toHaveBeenCalled();
+      });
+
+      it('falls back to the AI when the text checks find nothing, and says the AI suggested it', async () => {
+        const getMatchSuggestions = vi
+          .fn()
+          .mockReturnValueOnce(of(emptyScan))
+          .mockReturnValue(of(scanWith({ aiAttempted: true, suggestions: [{ ...suggestion, method: MatchMethod.Ai, detail: 'Signed J. Roe' }] })));
+        const { el } = await render({ getDocument: () => of(sample), getMatchSuggestions }, true, {}, null, { uploaded: '1' });
+
+        expect(getMatchSuggestions.mock.calls).toEqual([['abc', false], ['abc', true]]);
+        expect(el.querySelector('[role="dialog"]')?.textContent).toContain('suggested by the AI');
+      });
+
+      it('shows no dialog when nothing matches', async () => {
+        const getMatchSuggestions = vi.fn(() => of(emptyScan));
+        const { el } = await render({ getDocument: () => of(sample), getMatchSuggestions }, true, {}, null, { uploaded: '1' });
+
+        expect(el.querySelector('[role="dialog"]')).toBeNull();
+        expect(getMatchSuggestions).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not scan before processing has finished, then scans once when it has', async () => {
+        vi.useFakeTimers();
+        try {
+          const getDocument = vi
+            .fn()
+            .mockReturnValueOnce(of({ ...sample, status: DocumentStatus.ExtractingText }))
+            .mockReturnValue(of(sample));
+          const getMatchSuggestions = vi.fn(() => of(scanWith({ suggestions: [suggestion] })));
+          await TestBed.configureTestingModule({
+            imports: [DocumentDetails],
+            providers: [
+              provideRouter([]),
+              { provide: DocumentService, useValue: { getDocument, getClaims: () => of([]), getMatchSuggestions } },
+              { provide: ClaimService, useValue: {} },
+              { provide: UserService, useValue: { canWrite: signal(true) } },
+              {
+                provide: ActivatedRoute,
+                useValue: { snapshot: { paramMap: new Map([['id', 'abc']]), queryParamMap: new Map([['uploaded', '1']]) } },
+              },
+            ],
+          }).compileComponents();
+          const fixture = TestBed.createComponent(DocumentDetails);
+          fixture.detectChanges();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(getMatchSuggestions).not.toHaveBeenCalled();
+
+          await vi.advanceTimersByTimeAsync(2000);
+          await vi.advanceTimersByTimeAsync(5000);
+
+          expect(getMatchSuggestions).toHaveBeenCalledTimes(1);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('does not scan for a read-only user', async () => {
+        const getMatchSuggestions = vi.fn(() => of(scanWith({ suggestions: [suggestion] })));
+        await render({ getDocument: () => of(sample), getMatchSuggestions }, false, {}, null, { uploaded: '1' });
+
+        expect(getMatchSuggestions).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('opened from the list', () => {
+      it('scans and shows results inline, without a dialog', async () => {
+        const getMatchSuggestions = vi.fn(() => of(scanWith({ suggestions: [suggestion] })));
+        const { el } = await render({ getDocument: () => of(sample), getMatchSuggestions }, true, {}, null, { match: '1' });
+
+        expect(el.querySelector('[role="dialog"]')).toBeNull();
+        expect(el.textContent).toContain('Possible matches');
+        expect(el.textContent).toContain(otherClaim.reference);
+      });
+    });
+
+    it('does not scan by itself when opened normally', async () => {
+      const getMatchSuggestions = vi.fn(() => of(emptyScan));
+      await render({ getDocument: () => of(sample), getMatchSuggestions });
+
+      expect(getMatchSuggestions).not.toHaveBeenCalled();
     });
   });
 });

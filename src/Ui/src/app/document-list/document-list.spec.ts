@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { UserService } from '../auth/user.service';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentList } from './document-list';
@@ -19,10 +20,14 @@ const sample: DocumentSummary = {
   summary: null,
 };
 
-async function render(getDocuments: () => unknown, uploads = signal(0), settle = true) {
+async function render(getDocuments: () => unknown, uploads = signal(0), settle = true, canWrite = true) {
   await TestBed.configureTestingModule({
     imports: [DocumentList],
-    providers: [provideRouter([]), { provide: DocumentService, useValue: { getDocuments, uploads } }],
+    providers: [
+      provideRouter([]),
+      { provide: DocumentService, useValue: { getDocuments, uploads } },
+      { provide: UserService, useValue: { canWrite: signal(canWrite) } },
+    ],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(DocumentList);
@@ -113,5 +118,37 @@ describe('DocumentList', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('claims column', () => {
+    const matchLink = (el: HTMLElement) => el.querySelector<HTMLAnchorElement>('a[aria-label^="Match"]');
+
+    it('offers a "Match to claim" link to an unmatched document', async () => {
+      const { el } = await render(() => of([{ ...sample, claimCount: 0 }]));
+
+      expect(el.textContent).toContain('Unmatched');
+      expect(matchLink(el)!.getAttribute('href')).toBe('/documents/1?match=1');
+    });
+
+    it('shows how many claims a matched document is linked to, with no match link', async () => {
+      const { el } = await render(() => of([{ ...sample, claimCount: 2 }]));
+
+      expect(el.textContent).not.toContain('Unmatched');
+      expect(matchLink(el)).toBeNull();
+      expect(el.querySelectorAll('tbody td')[3].textContent?.trim()).toBe('2');
+    });
+
+    it('does not offer the match link to a read-only user', async () => {
+      const { el } = await render(() => of([{ ...sample, claimCount: 0 }]), signal(0), true, false);
+
+      expect(el.textContent).toContain('Unmatched');
+      expect(matchLink(el)).toBeNull();
+    });
+
+    it('shows nothing for the claim count when the API did not send one', async () => {
+      const { el } = await render(() => of([sample]));
+
+      expect(el.textContent).not.toContain('Unmatched');
+    });
   });
 });

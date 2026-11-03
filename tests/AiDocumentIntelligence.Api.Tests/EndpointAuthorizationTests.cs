@@ -30,6 +30,7 @@ public class EndpointAuthorizationTests : IClassFixture<ApiFactory>
         { "PUT", "/api/claims/11111111-1111-1111-1111-111111111111/documents/22222222-2222-2222-2222-222222222222", Access.Write },
         { "DELETE", "/api/claims/11111111-1111-1111-1111-111111111111/documents/22222222-2222-2222-2222-222222222222", Access.Write },
         { "GET", "/api/documents/11111111-1111-1111-1111-111111111111/claims", Access.Read },
+        { "GET", "/api/documents/11111111-1111-1111-1111-111111111111/match-suggestions", Access.Write },
         { "GET", "/api/users/handlers", Access.Write },
         { "GET", "/api/documents", Access.Read },
         { "GET", "/api/documents/11111111-1111-1111-1111-111111111111", Access.Read },

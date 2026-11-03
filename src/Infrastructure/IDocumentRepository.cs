@@ -18,6 +18,10 @@ public interface IDocumentRepository
     // that claim are saved together, so a failure can't leave an unmatched orphan.
     Task<Guid> CreateDocumentAsync(Document document, Guid? claimId = null, Guid? linkedByUserId = null, CancellationToken cancellationToken = default);
 
+    // How many claims each of the documents is linked to (documents with none are absent). Not filtered by
+    // visibility, so pass ids the user is already allowed to see.
+    Task<Dictionary<Guid, int>> GetLinkCountsAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default);
+
     // Links the document to the claim. Linking twice is a no-op. Callers must have authorised the change.
     Task LinkToClaimAsync(Guid documentId, Guid claimId, Guid linkedByUserId, CancellationToken cancellationToken = default);
 

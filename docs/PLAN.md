@@ -25,7 +25,7 @@ The plan then covers production readiness and a candidate feature list for you t
 **Not done yet** (everything else in this plan), notably:
 
 - `.eml`/`.msg` (MimeKit, MsgReader, `IEmailParser`), `.docx`, HEIC/TIFF, and the 2.3 email preview with server-side sanitisation.
-- 1.3 data model additions (`Category`, `Sha256`, `ParentDocumentId`, scan status) and their migration. This slice avoided a migration by deriving the category from the stored content type.
+- 1.3 data model additions (`Category`, `ParentDocumentId`, scan status) and their migration. (Main has since gained `Document.ContentHash`, a SHA-256 of every upload, which covers the `Sha256` field; the backfill of older documents and the index are still to check.) This slice avoided a migration by deriving the category from the stored content type.
 - 1.4 malware scanning with quarantine; 1.6 attachment review, duplicate and signature detection.
 - 2.4 SAS-based video streaming, direct-to-blob upload and thumbnails.
 - Phases 3 and 4.
@@ -38,7 +38,7 @@ The plan then covers production readiness and a candidate feature list for you t
 - The initial UI bundle is over its 500 kB budget (651 kB); not checked whether this predates the slice.
 - Hover is mouse and keyboard focus only; there is no touch trigger.
 
-**Suggested next step:** `.eml`/`.msg` extraction and the email viewer (sequencing step 2), which also needs the `Sha256` and `ParentDocumentId` migration.
+**Suggested next step:** `.eml`/`.msg` extraction and the email viewer (sequencing step 2), which also needs the `ParentDocumentId` migration (`ContentHash` already exists).
 
 ## Current state (from code inspection)
 

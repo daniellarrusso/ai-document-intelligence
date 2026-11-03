@@ -38,6 +38,14 @@ public class DocumentService
         return _documentRepository.GetDocumentsAsync(user, pageNumber, pageSize, trimmedSearch, unmatchedOnly, cancellationToken);
     }
 
+    // How many claims each document is linked to; documents with none are absent from the result.
+    public async Task<Dictionary<Guid, int>> GetLinkCountsAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default)
+    {
+        return documentIds.Count == 0
+            ? []
+            : await _documentRepository.GetLinkCountsAsync(documentIds, cancellationToken) ?? [];
+    }
+
     // The claims the document is linked to that the user may view. Null if the document doesn't exist or the
     // user may not view it.
     public async Task<List<Claim>?> GetLinkedClaimsAsync(CurrentUser user, Guid documentId, CancellationToken cancellationToken = default)
@@ -112,6 +120,9 @@ public class DocumentService
 
         var fileType = await ValidateAsync(file, cancellationToken);
 
+        // Fingerprint the bytes before storing them, so a later duplicate check can compare against it.
+        var contentHash = await ContentHasher.ComputeAsync(file.Content, cancellationToken);
+
         var documentId = Guid.NewGuid();
 
         // The client's file name is kept only on the record; the blob name never contains it.
@@ -132,7 +143,8 @@ public class DocumentService
             FileSize = file.FileSize,
             UploadedAt = DateTime.UtcNow,
             Status = DocumentStatus.Uploaded,
-            UploadedByUserId = uploader.Id
+            UploadedByUserId = uploader.Id,
+            ContentHash = contentHash
         };
 
         try

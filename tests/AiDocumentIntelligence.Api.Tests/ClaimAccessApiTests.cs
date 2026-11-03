@@ -237,6 +237,62 @@ public class ClaimAccessApiTests : IDisposable
     }
 
     [Fact]
+    public async Task GetMatchSuggestions_DocumentNotVisibleToCaller_ReturnsNotFound()
+    {
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Document?)null);
+        using var client = ClientFor("handler-i", AppRoles.Handler);
+
+        using var response = await client.GetAsync($"/api/documents/{DocumentId}/match-suggestions");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetMatchSuggestions_TextQuotesOwnClaimsReference_ReturnsItAsAReferenceMatch()
+    {
+        var handler = TestAuthHandler.OidFor("handler-j");
+        var claim = new Claim { Id = ClaimId, Reference = "CLM-20261015-011076AB", PolicyNumber = "P", ClaimantName = "Jane Doe", AssignedToUserId = handler };
+        _factory.Documents
+            .Setup(r => r.GetDocumentForUserAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Document { Id = DocumentId, ExtractedText = "About CLM-20261015-011076AB." });
+        _factory.Claims.Setup(r => r.GetClaimsForDocumentAsync(It.IsAny<CurrentUser>(), DocumentId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _factory.Claims.Setup(r => r.GetClaimsForMatchingAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([claim]);
+        _factory.Claims.Setup(r => r.GetClaimsByIdentifiersAsync(It.IsAny<CurrentUser>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        using var client = ClientFor("handler-j", AppRoles.Handler);
+
+        using var response = await client.GetAsync($"/api/documents/{DocumentId}/match-suggestions");
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var suggestion = body.GetProperty("suggestions").EnumerateArray().Single();
+        Assert.Equal("CLM-20261015-011076AB", suggestion.GetProperty("claim").GetProperty("reference").GetString());
+        Assert.Equal((int)MatchMethod.Reference, suggestion.GetProperty("method").GetInt32());
+        Assert.False(body.GetProperty("aiAttempted").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetDocuments_IncludesHowManyClaimsEachIsLinkedTo()
+    {
+        // The factory sets its defaults when the first client is created, so create it before overriding them.
+        using var client = ClientFor("admin-e", AppRoles.Admin);
+        var linked = new Document { Id = Guid.NewGuid(), FileName = "a.pdf" };
+        var unmatched = new Document { Id = Guid.NewGuid(), FileName = "b.pdf" };
+        _factory.Documents
+            .Setup(r => r.GetDocumentsAsync(It.IsAny<CurrentUser>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([linked, unmatched]);
+        _factory.Documents
+            .Setup(r => r.GetLinkCountsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [linked.Id] = 2 });
+
+        var items = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/documents");
+
+        Assert.Equal([2, 0], items.EnumerateArray().Select(i => i.GetProperty("claimCount").GetInt32()));
+        Assert.Equal("a.pdf", items[0].GetProperty("fileName").GetString());
+    }
+
+    [Fact]
     public async Task DeleteDocument_NotVisibleToCaller_ReturnsNotFound()
     {
         _factory.Documents
