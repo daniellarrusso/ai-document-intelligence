@@ -1,0 +1,47 @@
+<div class="flex items-center justify-between gap-3">
+  <h3 class="text-xs uppercase tracking-wide text-slate-500">Preview</h3>
+  <button
+    type="button"
+    class="rounded-md border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+    [disabled]="downloading()"
+    (click)="download()"
+  >
+    {{ downloading() ? 'Downloading...' : 'Download' }}
+  </button>
+</div>
+
+<div class="mt-2">
+  @if (loading()) {
+    <p class="text-sm text-slate-500">Loading preview...</p>
+  } @else if (error()) {
+    <p class="text-sm text-red-600" role="alert">{{ error() }}</p>
+  } @else {
+    @switch (kind()) {
+      @case ('pdf') {
+        <iframe
+          class="h-[32rem] w-full rounded-md border border-slate-200"
+          [src]="frameUrl()"
+          [title]="'Preview of ' + fileName()"
+        ></iframe>
+      }
+      @case ('image') {
+        <img
+          class="max-h-[32rem] max-w-full rounded-md border border-slate-200"
+          [src]="objectUrl()"
+          [alt]="fileName()"
+        />
+      }
+      @case ('video') {
+        <video class="max-h-[32rem] max-w-full rounded-md" controls preload="metadata" [src]="objectUrl()">
+          Your browser can't play this video. Use Download instead.
+        </video>
+      }
+      @case ('text') {
+        <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{{ text() }}</pre>
+      }
+      @default {
+        <p class="text-sm text-slate-500">No preview is available for this file type. Use Download to open it.</p>
+      }
+    }
+  }
+</div>

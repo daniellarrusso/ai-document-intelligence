@@ -3,12 +3,13 @@ import { Component, DestroyRef, afterRenderEffect, inject, signal, untracked } f
 import { RouterLink } from '@angular/router';
 import { DocumentStatus, DocumentSummary, documentStatusLabel } from './document.model';
 import { DocumentService } from './document.service';
+import { PreviewBladeTrigger } from '../document-preview/preview-blade-trigger';
 
 const POLL_INTERVAL_MS = 2000;
 
 @Component({
   selector: 'app-document-list',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, PreviewBladeTrigger],
   templateUrl: './document-list.html',
   styleUrl: './document-list.css',
 })

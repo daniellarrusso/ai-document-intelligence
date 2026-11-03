@@ -40,6 +40,16 @@ export class DocumentService {
     return this.http.get<DocumentSummary>(`${this.baseUrl}/${id}`);
   }
 
+  /** The stored file, shown in place by the preview. */
+  getContent(id: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/${id}/content`, { responseType: 'blob' });
+  }
+
+  /** The stored file as an attachment. */
+  download(id: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/${id}/download`, { responseType: 'blob' });
+  }
+
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${id}`);
   }

@@ -110,14 +110,17 @@ public class DocumentService
     {
         ArgumentNullException.ThrowIfNull(uploader);
 
+        var fileType = await ValidateAsync(file, cancellationToken);
+
         var documentId = Guid.NewGuid();
 
-        var blobName = $"documents/{documentId}/original/{file.FileName}";
+        // The client's file name is kept only on the record; the blob name never contains it.
+        var blobName = $"documents/{documentId}/original/{Guid.NewGuid():N}{Path.GetExtension(file.FileName).ToLowerInvariant()}";
 
         await _documentStorage.UploadAsync(
             file.Content,
             blobName,
-            file.ContentType,
+            fileType.ContentType,
             cancellationToken);
 
         var document = new Document
@@ -125,16 +128,25 @@ public class DocumentService
             Id = documentId,
             FileName = file.FileName,
             BlobName = blobName,
-            ContentType = file.ContentType,
+            ContentType = fileType.ContentType,
             FileSize = file.FileSize,
             UploadedAt = DateTime.UtcNow,
             Status = DocumentStatus.Uploaded,
             UploadedByUserId = uploader.Id
         };
 
-        // The foreign key needs the user row to exist, even if they never called /api/me.
-        await _userService.RecordSignInAsync(uploader, cancellationToken);
-        await _documentRepository.CreateDocumentAsync(document, claimId, uploader.Id, cancellationToken);
+        try
+        {
+            // The foreign key needs the user row to exist, even if they never called /api/me.
+            await _userService.RecordSignInAsync(uploader, cancellationToken);
+            await _documentRepository.CreateDocumentAsync(document, claimId, uploader.Id, cancellationToken);
+        }
+        catch
+        {
+            // Don't leave an orphaned blob behind when the record could not be saved.
+            await _documentStorage.DeleteAsync(blobName, CancellationToken.None);
+            throw;
+        }
 
         // Queued for processing: mark Processing before enqueueing so the worker's result can't be overwritten.
         await _documentRepository.UpdateStatusAsync(documentId, DocumentStatus.Processing, null, cancellationToken);
@@ -142,6 +154,44 @@ public class DocumentService
         await _processingQueue.EnqueueAsync(documentId, cancellationToken);
 
         return document;
+    }
+
+    // Checks the extension, size and leading bytes against FileTypePolicy. Throws InvalidFileException if refused.
+    private static async Task<FileTypeResult> ValidateAsync(UploadDocumentRequest file, CancellationToken cancellationToken)
+    {
+        var header = new byte[FileTypePolicy.HeaderLength];
+        var read = 0;
+        while (read < header.Length)
+        {
+            var count = await file.Content.ReadAsync(header.AsMemory(read), cancellationToken);
+            if (count == 0)
+            {
+                break;
+            }
+
+            read += count;
+        }
+
+        if (file.Content.CanSeek)
+        {
+            file.Content.Position = 0;
+        }
+
+        var result = FileTypePolicy.Validate(file.FileName, file.FileSize, header.AsSpan(0, read));
+        return result.IsValid ? result : throw new InvalidFileException(result.Error!);
+    }
+
+    // The document and an open stream of its stored bytes, or null if it doesn't exist or the user may not
+    // view it. The caller disposes the stream.
+    public async Task<(Document Document, Stream Content)?> OpenContentAsync(CurrentUser user, Guid id, CancellationToken cancellationToken = default)
+    {
+        var document = await _documentRepository.GetDocumentForUserAsync(user, id, cancellationToken);
+        if (document == null)
+        {
+            return null;
+        }
+
+        return (document, await _documentStorage.DownloadAsync(document.BlobName, cancellationToken));
     }
 
     // NotFound if the document doesn't exist or the user may not view it. The blob is removed first so a

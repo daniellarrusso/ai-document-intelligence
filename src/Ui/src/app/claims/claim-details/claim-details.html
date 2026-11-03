@@ -114,6 +114,7 @@
             #fileInput
             id="claim-file"
             type="file"
+            [accept]="accept"
             class="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700 hover:file:bg-slate-200"
             [disabled]="uploading()"
             (change)="onFileSelected($event)"
@@ -171,7 +172,11 @@
                 @for (result of results; track result.id) {
                   <li class="flex items-center justify-between gap-3 py-2">
                     <span class="min-w-0 break-all">
-                      <a [routerLink]="['/documents', result.id]" class="text-sky-700 hover:underline">{{
+                      <a
+                        [routerLink]="['/documents', result.id]"
+                        [appPreviewBlade]="result"
+                        class="text-sky-700 hover:underline"
+                        >{{
                         result.fileName
                       }}</a>
                       <span class="ml-2 text-xs text-slate-500">{{ result.uploadedAt | date: 'medium' }}</span>
@@ -220,6 +225,7 @@
                     <a
                       [routerLink]="['/documents', document.id]"
                       [queryParams]="{ claim: d.claim.id }"
+                      [appPreviewBlade]="document"
                       class="text-sky-700 hover:underline"
                       >{{ document.fileName }}</a
                     >

@@ -14,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddScoped<IDocumentStorage, BlobDocumentStorage>();
 builder.Services.AddScoped<IDocumentTextExtractor, PdfDocumentTextExtractor>();
+builder.Services.AddScoped<IDocumentTextExtractor, PlainTextDocumentTextExtractor>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<IDocumentSummarizer, AIChatDocumentSummarizer>();
 builder.Services.AddSingleton<IChatClient>(sp =>

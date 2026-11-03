@@ -73,6 +73,90 @@ public class DocumentServiceTests
     }
 
     [Fact]
+    public async Task SaveDocumentAsync_StoresDetectedTypeAndSanitisedBlobName()
+    {
+        var sut = CreateSut();
+        using var content = new MemoryStream([0xFF, 0xD8, 0xFF, 0xE0, 1, 2]);
+        string? blobName = null;
+        _storageMock
+            .Setup(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/jpeg", It.IsAny<CancellationToken>()))
+            .Callback<Stream, string, string, CancellationToken>((_, name, _, _) => blobName = name)
+            .ReturnsAsync("ignored");
+
+        var document = await sut.SaveDocumentAsync(
+            new UploadDocumentRequest(content, "../../evil name.JPG", "text/html", content.Length), TestUsers.Handler);
+
+        Assert.Equal("image/jpeg", document.ContentType);
+        Assert.Equal("../../evil name.JPG", document.FileName);
+        Assert.Matches($@"^documents/{document.Id}/original/[0-9a-f]{{32}}\.jpg$", blobName);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_ContentDoesNotMatchExtension_ThrowsInvalidFileExceptionAndStoresNothing()
+    {
+        var sut = CreateSut();
+        using var content = new MemoryStream("MZ\x90\0"u8.ToArray());
+
+        await Assert.ThrowsAsync<InvalidFileException>(() =>
+            sut.SaveDocumentAsync(new UploadDocumentRequest(content, "invoice.pdf", "application/pdf", content.Length), TestUsers.Handler));
+
+        _storageMock.Verify(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_ValidFile_UploadsFromTheStartOfTheStream()
+    {
+        var sut = CreateSut();
+        long? position = null;
+        _storageMock
+            .Setup(s => s.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Stream, string, string, CancellationToken>((stream, _, _, _) => position = stream.Position)
+            .ReturnsAsync("ignored");
+
+        await sut.SaveDocumentAsync(CreateRequest(), TestUsers.Handler);
+
+        Assert.Equal(0, position);
+    }
+
+    [Fact]
+    public async Task SaveDocumentAsync_RecordSaveFails_DeletesTheUploadedBlob()
+    {
+        _repositoryMock
+            .Setup(r => r.CreateDocumentAsync(It.IsAny<Document>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException());
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.SaveDocumentAsync(CreateRequest(), TestUsers.Handler));
+
+        _storageMock.Verify(s => s.DeleteAsync(It.Is<string>(n => n.StartsWith("documents/")), It.IsAny<CancellationToken>()), Times.Once);
+        _queueMock.Verify(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task OpenContentAsync_DocumentNotVisible_ReturnsNull()
+    {
+        var sut = CreateSut();
+
+        Assert.Null(await sut.OpenContentAsync(TestUsers.Handler, Guid.NewGuid()));
+        _storageMock.Verify(s => s.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task OpenContentAsync_VisibleDocument_ReturnsItsStoredBytes()
+    {
+        var document = new Document { Id = Guid.NewGuid(), BlobName = "documents/x/original/a.pdf" };
+        _repositoryMock.Setup(r => r.GetDocumentForUserAsync(TestUsers.Handler, document.Id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        var stream = new MemoryStream([1]);
+        _storageMock.Setup(s => s.DownloadAsync(document.BlobName, It.IsAny<CancellationToken>())).ReturnsAsync(stream);
+        var sut = CreateSut();
+
+        var result = await sut.OpenContentAsync(TestUsers.Handler, document.Id);
+
+        Assert.Same(document, result!.Value.Document);
+        Assert.Same(stream, result.Value.Content);
+    }
+
+    [Fact]
     public async Task DeleteDocumentAsync_StandaloneOwnDocument_DeletesBlobThenRecordAndReturnsAllowed()
     {
         var document = new Document { Id = Guid.NewGuid(), BlobName = "documents/x/original/file.txt", UploadedByUserId = TestUsers.Handler.Id };

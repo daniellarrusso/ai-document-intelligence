@@ -22,10 +22,10 @@ public class BlobDocumentStorage : IDocumentStorage
         {
             throw new ArgumentException("File content cannot be null or empty.", nameof(content));
         }
-        // max size less than 50 MB
-        if (content.Length > 50 * 1024 * 1024)
+        // Backstop only: FileTypePolicy applies the per-type limit before the upload reaches storage.
+        if (content.Length > FileTypePolicy.LargestMaxBytes)
         {
-            throw new ArgumentException("File size cannot exceed 50 MB.", nameof(content));
+            throw new ArgumentException($"File size cannot exceed {FileTypePolicy.LargestMaxBytes / (1024 * 1024)} MB.", nameof(content));
         }
 
         // validate content type

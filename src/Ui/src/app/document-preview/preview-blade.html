@@ -1,0 +1,55 @@
+@if (blade.target(); as doc) {
+  <aside
+    class="fixed inset-y-0 right-0 z-20 flex w-full flex-col overflow-y-auto border-l border-slate-200 bg-white shadow-xl sm:w-[28rem]"
+    aria-label="Document preview"
+  >
+    <div class="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+      <h2 class="break-all font-semibold text-slate-900">{{ doc.fileName }}</h2>
+      <button
+        type="button"
+        class="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        aria-label="Close preview"
+        (click)="blade.close()"
+      >
+        &times;
+      </button>
+    </div>
+
+    <div class="space-y-6 p-4">
+      <!-- Re-created per document so the viewer reloads its content. -->
+      @for (current of [doc]; track current.id) {
+        <app-document-preview [documentId]="current.id" [contentType]="current.contentType" [fileName]="current.fileName" />
+      }
+
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500">Type</dt>
+          <dd class="mt-1 break-all">{{ doc.contentType }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500">Size</dt>
+          <dd class="mt-1">{{ formatSize(doc.fileSize) }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500">Status</dt>
+          <dd class="mt-1">{{ statusLabel(doc.status) }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-slate-500">Uploaded</dt>
+          <dd class="mt-1">{{ doc.uploadedAt | date: 'medium' }}</dd>
+        </div>
+      </dl>
+
+      @if (doc.summary) {
+        <div>
+          <h3 class="text-xs uppercase tracking-wide text-slate-500">Summary</h3>
+          <p class="mt-2 text-sm text-slate-800">{{ doc.summary }}</p>
+        </div>
+      }
+
+      <a [routerLink]="['/documents', doc.id]" class="inline-block text-sm text-sky-700 hover:underline">
+        Open full details &rarr;
+      </a>
+    </div>
+  </aside>
+}
