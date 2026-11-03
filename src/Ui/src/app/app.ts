@@ -4,10 +4,11 @@ import { NavigationStart, Router, RouterLink, RouterOutlet } from '@angular/rout
 import { filter } from 'rxjs';
 import { AuthService } from './auth/auth.service';
 import { UserService } from './auth/user.service';
+import { PreviewBlade } from './document-preview/preview-blade';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink],
+  imports: [RouterOutlet, RouterLink, PreviewBlade],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })

@@ -60,7 +60,14 @@ public class LocalDocumentProcessingWorker : BackgroundService
             await repository.UpdateStatusAsync(documentId, DocumentStatus.ExtractingText, null, cancellationToken);
 
             var storage = scope.ServiceProvider.GetRequiredService<IDocumentStorage>();
-            var extractor = scope.ServiceProvider.GetRequiredService<IDocumentTextExtractor>();
+
+            // Images and video have no text to extract: they are stored for preview and are complete as they are.
+            var extractor = scope.ServiceProvider.GetServices<IDocumentTextExtractor>().FirstOrDefault(e => e.CanHandle(document.ContentType));
+            if (extractor == null)
+            {
+                await repository.MarkCompletedAsync(documentId, DateTime.UtcNow, cancellationToken);
+                return;
+            }
 
             await using var content = await storage.DownloadAsync(document.BlobName, cancellationToken);
             var extractedText = await extractor.ExtractTextAsync(content, document.ContentType, cancellationToken);

@@ -32,7 +32,11 @@
         @for (document of documents(); track document.id) {
           <tr>
             <td class="py-3 pr-4 font-medium">
-              <a [routerLink]="['/documents', document.id]" class="text-sky-700 hover:underline">{{
+              <a
+                [routerLink]="['/documents', document.id]"
+                [appPreviewBlade]="document"
+                class="text-sky-700 hover:underline"
+                >{{
                 document.fileName
               }}</a>
             </td>

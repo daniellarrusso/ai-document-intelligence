@@ -3,6 +3,7 @@
 <div class="flex flex-wrap items-center gap-3">
   <input
     type="file"
+    [accept]="accept"
     class="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-slate-700 hover:file:bg-slate-200"
     (change)="onFileSelected($event)"
   />

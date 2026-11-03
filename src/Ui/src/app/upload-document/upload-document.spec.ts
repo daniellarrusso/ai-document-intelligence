@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { DocumentService } from '../document-list/document.service';
@@ -51,5 +52,23 @@ describe('UploadDocument', () => {
     expect(fixture.componentInstance.message()).toBe('File upload failed!');
     expect(fixture.componentInstance.selectedFile()).not.toBeNull();
     expect(fixture.componentInstance.uploading()).toBe(false);
+  });
+
+  it("shows the server's reason when it refuses the file", async () => {
+    const reason = "File type '.exe' is not supported.";
+    const fixture = await setup(() => throwError(() => new HttpErrorResponse({ status: 400, error: reason })));
+    fixture.componentInstance.selectedFile.set(new File(['x'], 'a.exe'));
+
+    fixture.componentInstance.upload();
+
+    expect(fixture.componentInstance.message()).toBe(reason);
+  });
+
+  it('restricts the file picker to supported types', async () => {
+    const fixture = await setup(() => of({}));
+    const input = fixture.nativeElement.querySelector('input[type="file"]') as HTMLInputElement;
+
+    expect(input.accept).toContain('.pdf');
+    expect(input.accept).not.toContain('.exe');
   });
 });

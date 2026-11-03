@@ -177,6 +177,8 @@ public class ClaimsController : ControllerBase
     };
 
     [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [RequestSizeLimit(UploadLimits.RequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = UploadLimits.RequestBytes)]
     [HttpPost("{id}/documents", Name = "UploadClaimDocument")]
     public async Task<IActionResult> UploadDocument(Guid id, [FromForm] IFormFile file, CancellationToken cancellationToken)
     {
@@ -201,13 +203,20 @@ public class ClaimsController : ControllerBase
         }
 
         await using var stream = file.OpenReadStream();
-        var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
-            stream,
-            file.FileName,
-            file.ContentType,
-            file.Length), user, id, cancellationToken);
+        try
+        {
+            var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
+                stream,
+                file.FileName,
+                file.ContentType,
+                file.Length), user, id, cancellationToken);
 
-        return Ok(ClaimDocumentResponse.From(document));
+            return Ok(ClaimDocumentResponse.From(document));
+        }
+        catch (InvalidFileException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }
 

@@ -10,6 +10,9 @@ public class PdfDocumentTextExtractor : IDocumentTextExtractor
 {
     private const string SupportedContentType = "application/pdf";
 
+    public bool CanHandle(string contentType) =>
+        string.Equals(contentType, SupportedContentType, StringComparison.OrdinalIgnoreCase);
+
     // page.Text is just the page's letters in the order they were drawn: no line breaks, and words that were
     // drawn separately run together ("LimitedAspect House", "ADAMS50 REDVERS ROAD"). Content-order extraction
     // rebuilds words and lines from the letters' positions, which is what matching and search need.
@@ -33,7 +36,7 @@ public class PdfDocumentTextExtractor : IDocumentTextExtractor
             throw new ArgumentException("Document content cannot be null or empty.", nameof(content));
         }
 
-        if (!string.Equals(contentType, SupportedContentType, StringComparison.OrdinalIgnoreCase))
+        if (!CanHandle(contentType))
         {
             throw new NotSupportedException($"Content type '{contentType}' is not supported for text extraction.");
         }

@@ -10,7 +10,9 @@ import {
   isDocumentInProgress,
 } from '../../document-list/document.model';
 import { DocumentService } from '../../document-list/document.service';
+import { PreviewBladeTrigger } from '../../document-preview/preview-blade-trigger';
 import { formatFileSize } from '../../shared/format-file-size';
+import { UPLOAD_ACCEPT, uploadErrorMessage } from '../../shared/upload-policy';
 import { UserService } from '../../auth/user.service';
 import { ClaimDetail, ClaimStatus, Handler, claimStatusLabel } from '../claim.model';
 import { ClaimService } from '../claim.service';
@@ -20,7 +22,7 @@ const MATCH_PAGE_SIZE = 10;
 
 @Component({
   selector: 'app-claim-details',
-  imports: [DatePipe, DecimalPipe, RouterLink],
+  imports: [DatePipe, DecimalPipe, RouterLink, PreviewBladeTrigger],
   templateUrl: './claim-details.html',
 })
 export class ClaimDetails {
@@ -40,6 +42,7 @@ export class ClaimDetails {
   protected readonly error = signal('');
 
   protected readonly selectedFile = signal<File | null>(null);
+  protected readonly accept = UPLOAD_ACCEPT;
   protected readonly uploading = signal(false);
   protected readonly uploadError = signal('');
 
@@ -221,8 +224,8 @@ export class ClaimDetails {
         this.refreshPending = true;
         this.load();
       },
-      error: () => {
-        this.uploadError.set('File upload failed!');
+      error: (err: HttpErrorResponse) => {
+        this.uploadError.set(uploadErrorMessage(err));
         this.uploading.set(false);
       },
     });

@@ -21,6 +21,8 @@ public class ApiFactory : WebApplicationFactory<Program>
 
     public Mock<IUserRepository> Users { get; } = new();
 
+    public Mock<IDocumentStorage> Storage { get; } = new();
+
     // By default Entra token validation is replaced with the header-driven test scheme.
     protected virtual void ConfigureAuthentication(IServiceCollection services)
     {
@@ -53,7 +55,7 @@ public class ApiFactory : WebApplicationFactory<Program>
                 .ReturnsAsync([]);
             services.Replace(ServiceDescriptor.Scoped(_ => documents.Object));
 
-            services.Replace(ServiceDescriptor.Scoped(_ => Mock.Of<IDocumentStorage>()));
+            services.Replace(ServiceDescriptor.Scoped(_ => Storage.Object));
             services.Replace(ServiceDescriptor.Singleton(Mock.Of<IDocumentProcessingQueue>()));
             services.Replace(ServiceDescriptor.Scoped(_ => Mock.Of<IDocumentQuestionAnswerer>()));
         });

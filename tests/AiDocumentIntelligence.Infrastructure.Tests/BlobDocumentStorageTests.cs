@@ -1,3 +1,4 @@
+using AiDocumentIntelligence.Domain;
 using Azure;
 using Azure.Storage;
 using Azure.Storage.Blobs;
@@ -53,7 +54,7 @@ public class BlobDocumentStorageTests
     public async Task UploadAsync_ContentExceedsMaxSize_ThrowsArgumentException()
     {
         var sut = CreateSut();
-        using var content = new OversizedStream((50 * 1024 * 1024) + 1);
+        using var content = new OversizedStream(FileTypePolicy.LargestMaxBytes + 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
             () => sut.UploadAsync(content, "file.txt", "text/plain"));

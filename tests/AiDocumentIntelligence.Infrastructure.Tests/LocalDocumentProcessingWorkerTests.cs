@@ -15,6 +15,11 @@ public class LocalDocumentProcessingWorkerTests
     private readonly Mock<IDocumentSummarizer> _summarizerMock = new();
     private readonly Mock<IDocumentIndexer> _indexerMock = new();
 
+    public LocalDocumentProcessingWorkerTests()
+    {
+        _extractorMock.Setup(e => e.CanHandle(It.IsAny<string>())).Returns(true);
+    }
+
     private static Document CreateDocument(Guid id) =>
         new() { Id = id, BlobName = "documents/x/original/file.pdf", ContentType = "application/pdf" };
 
@@ -51,6 +56,22 @@ public class LocalDocumentProcessingWorkerTests
         _repositoryMock.Verify(r => r.SaveExtractedTextAsync(id, "extracted text", It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.UpdateSummaryAsync(id, "summary text", It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_NoExtractorForContentType_CompletesWithoutTextOrFailing()
+    {
+        var id = Guid.NewGuid();
+        var document = new Document { Id = id, BlobName = "documents/x/original/photo.jpg", ContentType = "image/jpeg" };
+        _repositoryMock.Setup(r => r.GetDocumentByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(document);
+        _extractorMock.Setup(e => e.CanHandle("image/jpeg")).Returns(false);
+
+        await CreateSut().ProcessAsync(id, CancellationToken.None);
+
+        _repositoryMock.Verify(r => r.MarkCompletedAsync(id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateStatusAsync(id, DocumentStatus.Failed, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _storageMock.Verify(s => s.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _summarizerMock.Verify(s => s.SummarizeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

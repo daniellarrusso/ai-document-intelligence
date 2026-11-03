@@ -17,6 +17,7 @@ import {
 } from '../document-list/document.model';
 import { DocumentService } from '../document-list/document.service';
 import { UserService } from '../auth/user.service';
+import { DocumentPreview } from '../document-preview/document-preview';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_QUESTION_LENGTH = 1000;
@@ -26,7 +27,7 @@ export type StepState = 'done' | 'current' | 'pending';
 
 @Component({
   selector: 'app-document-details',
-  imports: [DatePipe, DecimalPipe, RouterLink],
+  imports: [DatePipe, DecimalPipe, RouterLink, DocumentPreview],
   templateUrl: './document-details.html',
 })
 export class DocumentDetails {

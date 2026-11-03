@@ -3,6 +3,7 @@ using AiDocumentIntelligence.Infrastructure;
 using AiDocumentIntelligence.Api.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -108,7 +109,42 @@ public class DocumentsController : ControllerBase
         return Ok(document);
     }
 
+    // The stored bytes, shown in place when the browser can render the type. Range requests are supported so
+    // video can seek.
+    [HttpGet("{id}/content", Name = "GetDocumentContent")]
+    public Task<IActionResult> GetContent(Guid id, CancellationToken cancellationToken) =>
+        StreamContentAsync(id, inline: true, cancellationToken);
+
+    [HttpGet("{id}/download", Name = "DownloadDocument")]
+    public Task<IActionResult> Download(Guid id, CancellationToken cancellationToken) =>
+        StreamContentAsync(id, inline: false, cancellationToken);
+
+    private async Task<IActionResult> StreamContentAsync(Guid id, bool inline, CancellationToken cancellationToken)
+    {
+        if (User.GetCurrentUser() is not { } user)
+        {
+            return Forbid();
+        }
+
+        if (await _documentService.OpenContentAsync(user, id, cancellationToken) is not var (document, content))
+        {
+            return NotFound();
+        }
+
+        // Only ever the content type detected at upload, and never sniffed by the browser into something else.
+        Response.Headers[HeaderNames.XContentTypeOptions] = "nosniff";
+        Response.Headers[HeaderNames.CacheControl] = "private, no-store";
+
+        var disposition = new ContentDispositionHeaderValue(inline && FileTypePolicy.IsInlinePreviewable(document.ContentType) ? "inline" : "attachment");
+        disposition.SetHttpFileName(document.FileName);
+        Response.Headers[HeaderNames.ContentDisposition] = disposition.ToString();
+
+        return File(content, document.ContentType, enableRangeProcessing: true);
+    }
+
     [Authorize(Policy = AuthorizationPolicies.CanWrite)]
+    [RequestSizeLimit(UploadLimits.RequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = UploadLimits.RequestBytes)]
     [HttpPost(Name = "UploadDocument")]
     public async Task<IActionResult> Upload([FromForm] IFormFile file, CancellationToken cancellationToken)
     {
@@ -123,13 +159,20 @@ public class DocumentsController : ControllerBase
         }
 
         await using var stream = file.OpenReadStream();
-        var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
-            stream,
-            file.FileName,
-            file.ContentType,
-            file.Length), user, cancellationToken: cancellationToken);
+        try
+        {
+            var document = await _documentService.SaveDocumentAsync(new UploadDocumentRequest(
+                stream,
+                file.FileName,
+                file.ContentType,
+                file.Length), user, cancellationToken: cancellationToken);
 
-        return Ok(document);
+            return Ok(document);
+        }
+        catch (InvalidFileException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [Authorize(Policy = AuthorizationPolicies.CanWrite)]
@@ -191,6 +234,12 @@ public class DocumentsController : ControllerBase
 }
 
 public record AskDocumentRequest(string? Question);
+
+public static class UploadLimits
+{
+    // Request-level cap (the largest file type plus multipart overhead); FileTypePolicy enforces each type's own limit.
+    public const long RequestBytes = FileTypePolicy.MaxVideoBytes + 1024 * 1024;
+}
 
 // A document in the list: everything the document endpoint returns, plus how many claims it is linked to
 // (0 = unmatched).

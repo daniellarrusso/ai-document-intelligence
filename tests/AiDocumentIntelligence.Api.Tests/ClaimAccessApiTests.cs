@@ -28,7 +28,7 @@ public class ClaimAccessApiTests : IDisposable
     }
 
     private static MultipartFormDataContent File() =>
-        new() { { new ByteArrayContent([1, 2, 3]), "file", "a.pdf" } };
+        new() { { new ByteArrayContent("%PDF-1.7"u8.ToArray()), "file", "a.pdf" } };
 
     [Fact]
     public async Task GetClaims_AsHandler_QueriesOnBehalfOfThatUser()
